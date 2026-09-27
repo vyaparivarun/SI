@@ -232,11 +232,11 @@ export default function Calculator() {
                         <Field label="Pincode" hint="Pulls last-12-months sunshine & irradiance for your exact location">
                           <TextInput value={f.pincode} onChange={(e) => upd({ pincode: e.target.value })} placeholder="e.g. 302001" data-testid="calc-pincode" />
                         </Field>
-                        <div className="flex items-end">
+                        <Field label={"\u00A0"}>
                           <Btn type="button" variant="outline" onClick={fetchWeather} disabled={weatherLoading} className="w-full" data-testid="fetch-weather-btn">
                             {weatherLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Fetching…</> : <><CloudSun className="w-4 h-4" /> Get live solar data</>}
                           </Btn>
-                        </div>
+                        </Field>
                       </div>
                       {weatherError && <div className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2" data-testid="weather-error">{weatherError}</div>}
                       {weather && (
