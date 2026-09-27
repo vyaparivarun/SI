@@ -1,5 +1,5 @@
 /*
- * EFL Solar Intelligence — Calculation Engine
+ * Solar Intelligence — Calculation Engine
  * Pure functions, UI-independent. Every function exposes its assumptions.
  * All monetary values in INR. All energy in kWh unless noted.
  */
@@ -540,7 +540,7 @@ export function calculateFinancingPackage({
 }
 
 // ---------------------------------------------------------------------------
-// 14. OPERATING LEASE (EFL model) — monthly rental + GST, ownership transfers
+// 14. OPERATING LEASE — monthly rental + GST, ownership transfers
 // at end of tenure. Rental embeds the effective (reducing) lease rate.
 // ---------------------------------------------------------------------------
 export function calculateLease({ financeAmount, leaseRate = 9.5, tenureYears = 5, gstPct = 18, annualGeneration = 0 }) {

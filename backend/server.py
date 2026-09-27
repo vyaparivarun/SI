@@ -18,7 +18,7 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-app = FastAPI(title="EFL Renewable Energy Funding - Solar Intelligence Platform API")
+app = FastAPI(title="Solar Intelligence Platform API")
 api_router = APIRouter(prefix="/api")
 
 
@@ -144,7 +144,7 @@ def gen_id(prefix: str) -> str:
 # ----------------------------- Routes -----------------------------
 @api_router.get("/")
 async def root():
-    return {"message": "EFL REF Solar Intelligence Platform API", "status": "ok"}
+    return {"message": "Solar Intelligence Platform API", "status": "ok"}
 
 
 @api_router.post("/leads", response_model=Lead)
@@ -152,7 +152,7 @@ async def create_lead(payload: LeadCreate):
     intent, score = compute_intent(payload.monthlyBill, payload.loanRequirement)
     lead = Lead(
         **payload.model_dump(),
-        leadId=gen_id("EFL-LEAD"),
+        leadId=gen_id("SI-LEAD"),
         intent=intent,
         score=score,
     )
@@ -176,7 +176,7 @@ async def get_lead(lead_id: str):
 
 @api_router.post("/epc/register")
 async def register_epc(payload: EPCRegister):
-    epc_id = gen_id("EFL-EPC")
+    epc_id = gen_id("SI-EPC")
     doc = {"id": str(uuid.uuid4()), "epcId": epc_id, "status": "Active",
            "createdAt": now_iso(), **payload.model_dump()}
     await db.epc_partners.insert_one(doc)
@@ -193,7 +193,7 @@ async def list_epc():
 @api_router.post("/epc/projects")
 async def submit_project(payload: EPCProjectCreate):
     intent, score = compute_intent(payload.monthlyBill, payload.loanRequirement)
-    project_id = gen_id("EFL-PRJ")
+    project_id = gen_id("SI-PRJ")
     stages = ["Submitted", "Under Review", "Documents Pending", "Credit Evaluation",
               "Approved", "Disbursed"]
     doc = {
@@ -225,7 +225,7 @@ async def submit_project(payload: EPCProjectCreate):
         source="epc",
         epcId=payload.epcId,
         result=payload.result,
-        leadId=gen_id("EFL-LEAD"),
+        leadId=gen_id("SI-LEAD"),
         intent=intent2,
         score=score2,
     )

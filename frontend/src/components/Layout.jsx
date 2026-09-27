@@ -71,7 +71,8 @@ export const NAV = [
     label: "Financing",
     href: "/financing",
     items: [
-      { label: "Solar Financing (EFL REF)", href: "/financing" },
+      { label: "Solar Financing Overview", href: "/financing" },
+      { label: "Financing Partners", href: "/financing-partners" },
       { label: "How Financing Works", href: "/financing#journey" },
       { label: "Documents Required", href: "/financing#documents" },
     ],
@@ -80,6 +81,7 @@ export const NAV = [
     label: "For EPCs",
     href: "/epc",
     items: [
+      { label: "Our EPC Partners", href: "/epc-partners" },
       { label: "Become a Partner", href: "/epc#register" },
       { label: "Submit a Project", href: "/epc#submit" },
       { label: "Partner Dashboard", href: "/epc#dashboard" },
@@ -111,8 +113,8 @@ const Header = () => {
             </div>
           </div>
           <div className="leading-none">
-            <div className="font-head font-extrabold text-[15px] tracking-tight text-slate-50">EFL <span className="text-amber-500">REF</span></div>
-            <div className="text-[9px] uppercase tracking-[0.15em] text-slate-400 mt-0.5 font-mono">Solar Intelligence</div>
+            <div className="font-head font-extrabold text-[15px] tracking-tight text-slate-50">Solar <span className="text-amber-500">Intelligence</span></div>
+            <div className="text-[9px] uppercase tracking-[0.15em] text-slate-400 mt-0.5 font-mono">Savings · Financing · EPC</div>
           </div>
         </Link>
 
@@ -194,19 +196,19 @@ const Footer = () => (
             <div className="w-9 h-9 rounded-lg bg-amber-500 flex items-center justify-center">
               <Sun className="w-5 h-5 text-slate-950" strokeWidth={2.5} />
             </div>
-            <div className="font-head font-extrabold text-lg text-slate-50">EFL <span className="text-amber-500">REF</span></div>
+            <div className="font-head font-extrabold text-lg text-slate-50">Solar <span className="text-amber-500">Intelligence</span></div>
           </div>
           <p className="text-sm text-slate-400 leading-relaxed max-w-sm">
-            India's digital solar decision platform for businesses. Understand your solar opportunity, calculate savings, evaluate the project and explore financing — from EFL's Renewable Energy Funding vertical.
+            India's neutral solar decision & marketplace platform for businesses. Understand your solar opportunity, calculate savings, evaluate the project and get matched to the right EPC and financing partners.
           </p>
           <div className="mt-5 inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400">
-            <Zap className="w-3.5 h-3.5" /> Financing partner — not an EPC installer
+            <Zap className="w-3.5 h-3.5" /> Neutral marketplace — Customer · EPC · Financiers
           </div>
         </div>
         {[
           { title: "Platform", links: [["Solar Calculator", "/calculator"], ["Financing", "/financing"], ["State Database", "/states"], ["DISCOM Directory", "/discoms"]] },
           { title: "Knowledge", links: [["Technology", "/technology"], ["Project Models", "/project-models"], ["Government & Policy", "/government"], ["RECs & Carbon", "/rec-carbon"]] },
-          { title: "Company", links: [["For EPCs", "/epc"], ["Industries", "/industries"], ["Resources", "/resources"], ["Contact", "/contact"]] },
+          { title: "Company", links: [["Financing Partners", "/financing-partners"], ["EPC Partners", "/epc-partners"], ["For EPCs", "/epc"], ["Contact", "/contact"]] },
         ].map((col) => (
           <div key={col.title}>
             <div className="text-xs uppercase tracking-wider text-slate-500 font-mono mb-4">{col.title}</div>
@@ -219,8 +221,8 @@ const Footer = () => (
         ))}
       </div>
       <div className="mt-12 pt-6 border-t border-white/10 text-xs text-slate-500 leading-relaxed space-y-2">
-        <p>All calculations, tariffs, incentives and data are indicative, source-tagged and subject to change. Solar generation is an estimate; government incentive eligibility is subject to applicable rules; tax treatment should be confirmed with a professional; financing figures are subject to EFL's credit assessment and approval; REC/carbon-credit eligibility and monetization are not guaranteed.</p>
-        <p className="text-slate-600">© {new Date().getFullYear()} EFL Renewable Energy Funding — Solar Intelligence Platform. Demonstration platform.</p>
+        <p>All calculations, tariffs, incentives and data are indicative, source-tagged and subject to change. Solar generation is an estimate; government incentive eligibility is subject to applicable rules; tax treatment should be confirmed with a professional; financing figures are subject to the financing partner's credit assessment and approval; REC/carbon-credit eligibility and monetization are not guaranteed.</p>
+        <p className="text-slate-600">© {new Date().getFullYear()} Solar Intelligence — Neutral Solar Savings, Financing & EPC Marketplace. Demonstration platform.</p>
       </div>
     </div>
   </footer>

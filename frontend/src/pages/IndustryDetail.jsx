@@ -40,7 +40,7 @@ export default function IndustryDetail() {
             <p className="text-sm text-slate-400 leading-relaxed">{ind.desc}</p>
             <div className="mt-5 p-4 rounded-lg bg-amber-500/5 border border-amber-500/15">
               <div className="text-xs uppercase tracking-wider text-amber-500/80 font-mono mb-1">Financing lens</div>
-              <p className="text-sm text-slate-300">With EFL financing, a {ind.name.toLowerCase()} unit can often deploy solar with no upfront capital — repaying the loan from electricity savings. Compare CAPEX vs OPEX in the calculator.</p>
+              <p className="text-sm text-slate-300">With partner financing, a {ind.name.toLowerCase()} unit can often deploy solar with no upfront capital — repaying the loan from electricity savings. Compare CAPEX vs OPEX in the calculator.</p>
             </div>
             <Btn as={Link} to="/financing" variant="outline" className="mt-4">Explore financing <ArrowRight className="w-4 h-4" /></Btn>
           </Card>

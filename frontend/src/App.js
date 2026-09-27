@@ -16,6 +16,8 @@ import Technology from "@/pages/Technology";
 import ProjectModels from "@/pages/ProjectModels";
 import SolarForBusiness from "@/pages/SolarForBusiness";
 import EPC from "@/pages/EPC";
+import FinancingPartners from "@/pages/FinancingPartners";
+import EpcPartners from "@/pages/EpcPartners";
 import Resources from "@/pages/Resources";
 import Contact from "@/pages/Contact";
 
@@ -40,6 +42,8 @@ function App() {
             <Route path="/project-models" element={<ProjectModels />} />
             <Route path="/solar-for-business" element={<SolarForBusiness />} />
             <Route path="/epc" element={<EPC />} />
+            <Route path="/financing-partners" element={<FinancingPartners />} />
+            <Route path="/epc-partners" element={<EpcPartners />} />
             <Route path="/resources" element={<Resources />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="*" element={<Home />} />

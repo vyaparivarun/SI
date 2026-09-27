@@ -63,7 +63,7 @@ export default function EPC() {
   return (
     <div>
       <PageHeader eyebrow="For EPC Partners" title="Are you an EPC? Submit your project."
-        subtitle="Bring your industrial & commercial customers to EFL for fast solar financing. Register, submit a project, and track it to disbursement — CUSTOMER → EPC → EFL.">
+        subtitle="Bring your industrial & commercial customers to our financing partners for fast solar financing. Register, submit a project, and track it to disbursement — CUSTOMER → SOLAR INTELLIGENCE → EPC & FINANCING PARTNERS.">
         <div className="flex flex-wrap gap-2">
           <Pill tone="amber"><Handshake className="w-3 h-3" /> Channel partner programme</Pill>
           <Pill tone="emerald">Lead pipeline & tracking</Pill>
@@ -85,7 +85,7 @@ export default function EPC() {
                 <Card>
                   <div className="flex items-center gap-2 mb-3"><Building2 className="w-5 h-5 text-amber-400" /><h3 className="font-head font-semibold text-lg text-slate-100">EPC Partner Benefits</h3></div>
                   <ul className="space-y-2.5 text-sm text-slate-400">
-                    {["Fast financing for your customers", "Quick project calculator & eligibility check", "Structured lead pipeline & tracking", "Grow deal closure by removing capital barriers", "Dedicated EFL REF support"].map((b) => <li key={b} className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />{b}</li>)}
+                    {["Fast financing for your customers", "Quick project calculator & eligibility check", "Structured lead pipeline & tracking", "Grow deal closure by removing capital barriers", "Access to multiple banks, NBFCs & DFIs"].map((b) => <li key={b} className="flex gap-2"><CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />{b}</li>)}
                   </ul>
                 </Card>
               </div>
@@ -152,18 +152,18 @@ export default function EPC() {
                   <Field label="Loan requirement (₹)"><NumberInput prefix="₹" value={prj.loanRequirement} onChange={(e) => setPrj({ ...prj, loanRequirement: e.target.value })} data-testid="prj-loan" /></Field>
                   <Field label="Project model"><Select value={prj.projectModel} onChange={(e) => setPrj({ ...prj, projectModel: e.target.value })} options={["CAPEX", "OPEX", "PPA", "Captive", "Group Captive", "Open Access"]} /></Field>
                   <Field label="Expected commissioning"><TextInput type="date" value={prj.commissioningDate} onChange={(e) => setPrj({ ...prj, commissioningDate: e.target.value })} /></Field>
-                  <div className="sm:col-span-2 lg:col-span-3"><Btn type="submit" disabled={busy} className="w-full py-3" data-testid="epc-submit-project"><Send className="w-4 h-4" />{busy ? "Submitting..." : "Submit Project to EFL"}</Btn></div>
+                  <div className="sm:col-span-2 lg:col-span-3"><Btn type="submit" disabled={busy} className="w-full py-3" data-testid="epc-submit-project"><Send className="w-4 h-4" />{busy ? "Submitting..." : "Submit Project for Financing"}</Btn></div>
                 </form>
               )}
             </Card>
-            <Disclaimer className="mt-6">Submitting a project creates a financing lead with EFL. Financing is subject to EFL's credit assessment, applicable terms and approval.</Disclaimer>
+            <Disclaimer className="mt-6">Submitting a project creates a financing lead routed to our financing partners. Financing is subject to the partner's credit assessment, applicable terms and approval.</Disclaimer>
           </TabsContent>
 
           {/* DASHBOARD / TRACK */}
           <TabsContent value="dashboard" id="dashboard">
             <Card className="mb-6">
               <div className="flex flex-wrap items-end gap-3">
-                <Field label="Track a project by Lead ID" className="flex-1 min-w-[240px]"><TextInput value={trackId} onChange={(e) => setTrackId(e.target.value)} placeholder="EFL-PRJ-XXXX-XXXX" data-testid="track-input" /></Field>
+                <Field label="Track a project by Lead ID" className="flex-1 min-w-[240px]"><TextInput value={trackId} onChange={(e) => setTrackId(e.target.value)} placeholder="SI-PRJ-XXXX-XXXX" data-testid="track-input" /></Field>
                 <Btn onClick={doTrack} data-testid="track-btn"><Search className="w-4 h-4" /> Track</Btn>
               </div>
             </Card>
@@ -199,7 +199,7 @@ export default function EPC() {
                     })}
                   </div>
                 </div>
-                <Disclaimer className="mt-6">Stage shown is indicative for this demo. Actual credit evaluation follows EFL's internal process.</Disclaimer>
+                <Disclaimer className="mt-6">Stage shown is indicative for this demo. Actual credit evaluation follows the financing partner's internal process.</Disclaimer>
               </Card>
             ) : (
               <Card className="text-center py-14">

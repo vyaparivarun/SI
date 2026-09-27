@@ -248,7 +248,7 @@ export default function Calculator() {
                 {/* STEP 4 — FINANCING */}
                 {step === 4 && (
                   <div className="space-y-5">
-                    <h2 className="font-head font-semibold text-xl text-slate-100">Financing (EFL defaults applied)</h2>
+                    <h2 className="font-head font-semibold text-xl text-slate-100">Financing (indicative marketplace defaults)</h2>
                     <div className="grid sm:grid-cols-3 gap-4">
                       <div className="p-4 rounded-lg bg-white/[0.03] border border-white/10"><div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Financing share</div><div className="num text-xl font-bold text-amber-400">{f.financingPct}%</div></div>
                       <div className="p-4 rounded-lg bg-white/[0.03] border border-white/10"><div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Interest rate</div><div className="num text-xl font-bold text-amber-400">{f.interestRate}%</div></div>
@@ -268,7 +268,7 @@ export default function Calculator() {
                         {!f.autoSize && <Field label="Custom capacity (kW)"><NumberInput value={f.capacityKw} onChange={(e) => upd({ capacityKw: e.target.value })} suffix="kW" placeholder={String(fitKw)} data-testid="calc-capacity" /></Field>}
                       </div>
                     )}
-                    <Disclaimer>Financing figures are indicative and subject to EFL's credit assessment, applicable terms and approval.</Disclaimer>
+                    <Disclaimer>Financing figures are indicative and subject to the financing partner's credit assessment, applicable terms and approval.</Disclaimer>
                   </div>
                 )}
 
@@ -573,7 +573,7 @@ function Results({ f, model, capacityKw, fullKw, areaNeed, coveragePct, areaLimi
             <div className="text-center py-8" data-testid="lead-success">
               <CheckCircle2 className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
               <h3 className="font-head text-2xl font-bold text-slate-100">Financing assessment requested!</h3>
-              <p className="text-slate-400 mt-2">Our EFL Renewable Energy Funding team will reach out.</p>
+              <p className="text-slate-400 mt-2">Our financing partners will reach out.</p>
               <div className="num text-lg text-amber-400 mt-4">Reference: {leadDone.leadId}</div>
               <div className="flex justify-center gap-3 mt-4"><Pill tone={leadDone.intent === "HIGH" ? "emerald" : "amber"}>{leadDone.intent} intent</Pill><Pill tone="blue">Score {leadDone.score}/100</Pill></div>
             </div>
@@ -581,7 +581,7 @@ function Results({ f, model, capacityKw, fullKw, areaNeed, coveragePct, areaLimi
             <div className="grid lg:grid-cols-2 gap-8 items-center">
               <div>
                 <h3 className="font-head text-2xl lg:text-3xl font-bold text-slate-50">Get a Financing Assessment</h3>
-                <p className="text-slate-400 mt-3">Turn this estimate into a real financing conversation. Share your details and EFL's REF team will assess your project.</p>
+                <p className="text-slate-400 mt-3">Turn this estimate into a real financing conversation. Share your details and we'll match your project to the right financing partners.</p>
                 <div className="mt-5 grid grid-cols-2 gap-3">
                   <div className="bg-white/[0.03] border border-white/8 rounded-lg p-3"><div className="text-[10px] text-slate-500 font-mono uppercase">Est. Loan</div><div className="num text-amber-400 font-bold">{inrCompact(model.loan.loanAmount)}</div></div>
                   <div className="bg-white/[0.03] border border-white/8 rounded-lg p-3"><div className="text-[10px] text-slate-500 font-mono uppercase">Est. EMI</div><div className="num text-emerald-400 font-bold">{inr(m.monthlyEMI)}</div></div>
@@ -619,7 +619,7 @@ function Results({ f, model, capacityKw, fullKw, areaNeed, coveragePct, areaLimi
           <div className="mt-4 space-y-2 text-[11px] text-slate-500 leading-relaxed">
             <p>• Solar generation is an <b>estimate</b> and depends on location, irradiation, system design, shading, equipment and operating conditions.</p>
             <p>• Government incentive eligibility is subject to applicable rules and approval by the relevant authority.</p>
-            <p>• Financing figures are indicative and subject to EFL's credit assessment, applicable terms and approval.</p>
+            <p>• Financing figures are indicative and subject to the financing partner's credit assessment, applicable terms and approval.</p>
             <p>• REC / carbon-credit eligibility and monetization are not guaranteed. Tax treatment should be confirmed with a qualified tax professional.</p>
           </div>
         </Card>
@@ -673,10 +673,10 @@ function FinanceDeepDive({ projectCost, financingPct, interestRate, tenureYears,
   ];
 
   const compRows = [
-    ["Ownership", "You own from day 1", `EFL owns during term → transfers to you after ${lease.months} months`],
+    ["Ownership", "You own from day 1", `The financier owns during term → transfers to you after ${lease.months} months`],
     ["Monthly payment", "EMI (principal + interest)", "Rental + 18% GST"],
     ["Balance sheet", "On balance sheet (asset + loan)", "Off balance sheet (operating lease)"],
-    ["Depreciation", "You claim (40% accelerated)", "EFL claims (not you)"],
+    ["Depreciation", "You claim (40% accelerated)", "The financier claims (not you)"],
     ["GST", "Upfront input credit on project", "GST charged on each rental"],
     ["Income-tax benefit", "Interest + depreciation deductible", "100% of rental deductible"],
     ["Pre-closure", "Charges may apply", "No pre-closure charges"],
@@ -694,7 +694,7 @@ function FinanceDeepDive({ projectCost, financingPct, interestRate, tenureYears,
         <div className="p-3.5 rounded-lg bg-white/[0.03] border border-white/10 mb-6 text-sm text-slate-400 leading-relaxed">
           {isLoan
             ? <><span className="text-slate-200 font-semibold">Term Loan:</span> you own the plant from day one, repay a monthly EMI on reducing balance, claim depreciation and upfront GST input credit. Pre-closure charges may apply.</>
-            : <><span className="text-slate-200 font-semibold">Operating Lease:</span> EFL owns the plant and you pay a monthly rental (+GST); the full rental is tax-deductible and it stays off your balance sheet. Ownership transfers to you after {lease.months} months of timely rentals. No pre-closure charges.</>}
+            : <><span className="text-slate-200 font-semibold">Operating Lease:</span> the financier owns the plant and you pay a monthly rental (+GST); the full rental is tax-deductible and it stays off your balance sheet. Ownership transfers to you after {lease.months} months of timely rentals. No pre-closure charges.</>}
         </div>
 
         {isLoan ? (
@@ -890,7 +890,7 @@ function FinanceDeepDive({ projectCost, financingPct, interestRate, tenureYears,
             </div>
           )}
         </div>
-        <Disclaimer className="mt-6">Fees, GST, lease rentals and rates are indicative and configurable by EFL, and finalised at credit assessment. Depreciation, GST-input and lease-rental tax treatment should be confirmed with a qualified tax professional.</Disclaimer>
+        <Disclaimer className="mt-6">Fees, GST, lease rentals and rates are indicative and configurable by the financing partner, and finalised at credit assessment. Depreciation, GST-input and lease-rental tax treatment should be confirmed with a qualified tax professional.</Disclaimer>
       </Card>
     </Section>
   );

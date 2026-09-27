@@ -1,7 +1,10 @@
-# EFL Renewable Energy Funding (REF) — Solar Intelligence Platform
+# Solar Intelligence — Neutral Solar Savings, Financing & EPC Marketplace
 
 ## Original Problem Statement
-Production-quality, responsive B2B web app for the Indian C&I solar market. EFL is an NBFC with a Renewable Energy Funding vertical financing solar for industrial/commercial customers; EPCs are a channel. The platform spans the full journey: bill → solar potential → project size → cost → govt benefits → financing → EMI → savings → payback → cash flow → ROI → environmental → REC → financing lead. Must look like a sophisticated B2B fintech/energy platform, not a solar installer site.
+Production-quality, responsive B2B web app for the Indian C&I solar market. Solar Intelligence is a NEUTRAL 3-way marketplace connecting Customers ↔ EPCs ↔ Financing Partners (banks/NBFCs/DFIs). The platform spans the full journey: bill → solar potential → project size → cost → govt benefits → financing → EMI → savings → payback → cash flow → ROI → environmental → REC → financing lead. Must look like a sophisticated B2B fintech/energy platform, not a solar installer site.
+
+## Rebrand note (2026-06)
+Previously positioned as "EFL Renewable Energy Funding (REF)" (single NBFC). Per user, ALL EFL/Electronica Finance branding was removed and the site repositioned as neutral marketplace "Solar Intelligence". EFL/Electronica now appears ONLY as one listed NBFC among many financing partners. Financing language is generic ("the financing partner's credit assessment"). Lead/EPC/project ID prefixes changed EFL-* → SI-*.
 
 ## User Choices
 - Scope: full depth across calculator+financing, data portal, and EPC portal.
@@ -38,3 +41,10 @@ Production-quality, responsive B2B web app for the Indian C&I solar market. EFL 
 
 ## Next Tasks
 - Consider admin CRUD for regulatory data; OCR bill upload; AI advisor.
+
+## Rebrand + Marketplace sections (2026-06) — DONE
+- Global rebrand EFL → Solar Intelligence across all pages, Layout (logo "Solar Intelligence"), footer, config (`EFL_PRODUCT`→`FINANCING_PRODUCT`), content, engine header, backend title & ID prefixes (SI-*).
+- New data: `/app/frontend/src/data/partners.js` — FINANCING_PARTNERS (8: IREDA, SIDBI 4E, SBI, HDFC, Tata Capital, Electronica Finance, PFC&REC, CGTMSE — source-tagged, editable rate/tenure/LTV) + EPC_PARTNERS (12: Tata Power Solar, Sterling&Wilson, Fourth Partner, CleanMax, Gentari, Waaree, Vikram, Jakson Green, Mahindra Susten, KPI Green, Adani Solar, Amp Energy).
+- New pages: `/financing-partners` (type filter: All/DFI/Bank/NBFC/Scheme) and `/epc-partners` (search). Routed in App.js; linked in nav (Financing → Financing Partners; For EPCs → Our EPC Partners) + footer.
+- EPC flow text now CUSTOMER → SOLAR INTELLIGENCE → EPC & FINANCING PARTNERS.
+- Calculator math untouched. Verified via screenshots (both pages render, logo/nav correct).

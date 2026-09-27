@@ -4,7 +4,7 @@ import { PageHeader, Section, Card, Btn, Disclaimer, Metric, Pill, Eyebrow } fro
 import { Field, NumberInput, SliderInput, Segmented } from "@/components/Form";
 import { BarChartCard, AreaChartCard } from "@/components/Charts";
 import { calculateLoanEMI, calculateAmortization } from "@/lib/engine";
-import { EFL_PRODUCT, DEFAULTS } from "@/data/config";
+import { FINANCING_PRODUCT, DEFAULTS } from "@/data/config";
 import { FINANCING_JOURNEY, DOCUMENTS } from "@/data/content";
 import { inr, inrCompact } from "@/lib/format";
 import { IndianRupee, Percent, Calendar, TrendingUp, FileCheck, ArrowRight } from "lucide-react";
@@ -32,12 +32,12 @@ export default function Financing() {
 
   return (
     <div>
-      <PageHeader eyebrow="EFL Renewable Energy Funding" title="Solar financing for industrial & commercial projects"
-        subtitle="Your solar project doesn't have to wait for upfront capital. Explore financing for eligible C&I solar projects — EFL is the financing partner, not an EPC installer.">
+      <PageHeader eyebrow="Solar Financing" title="Solar financing for industrial & commercial projects"
+        subtitle="Your solar project doesn't have to wait for upfront capital. Solar Intelligence is a neutral marketplace that matches eligible C&I projects to banks, NBFCs and DFIs — we are not an EPC installer or a single lender.">
         <div className="flex flex-wrap gap-2">
-          <Pill tone="amber">{EFL_PRODUCT.maxLoan}</Pill>
-          <Pill tone="emerald">{EFL_PRODUCT.collateralFree}</Pill>
-          <Pill tone="blue">{EFL_PRODUCT.tenureRange} tenure</Pill>
+          <Pill tone="amber">{FINANCING_PRODUCT.maxLoan}</Pill>
+          <Pill tone="emerald">{FINANCING_PRODUCT.collateralFree}</Pill>
+          <Pill tone="blue">{FINANCING_PRODUCT.tenureRange} tenure</Pill>
         </div>
       </PageHeader>
 
@@ -52,7 +52,7 @@ export default function Financing() {
             <SliderInput label="Interest rate (p.a.)" value={rate} onChange={setRate} min={8} max={16} step={0.25} format={(v) => `${v}%`} testId="fin-rate" />
             <SliderInput label="Tenure" value={tenure} onChange={setTenure} min={3} max={10} step={1} format={(v) => `${v} yrs`} testId="fin-tenure" />
             <SliderInput label="Processing fee" value={processingFee} onChange={setProcessingFee} min={0} max={3} step={0.25} format={(v) => `${v}%`} testId="fin-fee" />
-            <div className="text-xs text-slate-500 border-t border-white/10 pt-4">Interest rate is configurable by EFL and finalized at credit assessment. Values shown are indicative.</div>
+            <div className="text-xs text-slate-500 border-t border-white/10 pt-4">Interest rate is configurable and finalized by the financing partner at credit assessment. Values shown are indicative.</div>
           </Card>
 
           <div className="lg:col-span-3 space-y-6">
@@ -90,13 +90,13 @@ export default function Financing() {
             ))}
           </div>
         </div>
-        <Disclaimer className="mt-6">{EFL_PRODUCT.disclaimer}</Disclaimer>
+        <Disclaimer className="mt-6">{FINANCING_PRODUCT.disclaimer}</Disclaimer>
       </Section>
 
       {/* JOURNEY */}
       <Section id="journey" className="py-14 border-t border-white/10">
         <Eyebrow>How financing works</Eyebrow>
-        <h2 className="font-head text-2xl lg:text-3xl font-bold text-slate-50 mt-3 mb-8">The EFL financing journey</h2>
+        <h2 className="font-head text-2xl lg:text-3xl font-bold text-slate-50 mt-3 mb-8">The solar financing journey</h2>
         <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-4">
           {FINANCING_JOURNEY.map((s) => (
             <div key={s.step} className="card-surface p-5">
@@ -116,9 +116,10 @@ export default function Financing() {
             <Card key={d.group} className="!p-5"><div className="font-semibold text-slate-100 text-sm mb-3">{d.group}</div><ul className="space-y-1.5">{d.items.map((it) => <li key={it} className="text-xs text-slate-400 flex gap-2"><span className="text-amber-500">•</span>{it}</li>)}</ul></Card>
           ))}
         </div>
-        <Disclaimer className="mt-6">Not every customer will require every document. The exact list depends on the borrower profile and project, and is confirmed during EFL's credit assessment.</Disclaimer>
+        <Disclaimer className="mt-6">Not every customer will require every document. The exact list depends on the borrower profile and project, and is confirmed during the financing partner's credit assessment.</Disclaimer>
         <div className="mt-8 flex flex-wrap gap-3">
           <Btn as={Link} to="/calculator">Calculate & apply <ArrowRight className="w-4 h-4" /></Btn>
+          <Btn as={Link} to="/financing-partners" variant="secondary">View financing partners</Btn>
           <Btn as={Link} to="/contact" variant="secondary">Request a callback</Btn>
         </div>
       </Section>

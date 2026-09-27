@@ -1,5 +1,5 @@
 /*
- * Default engine assumptions & EFL financing configuration.
+ * Default engine assumptions & indicative marketplace financing configuration.
  * All values here are CONFIGURABLE defaults — not hardcoded into UI logic.
  */
 
@@ -26,7 +26,7 @@ export const DEFAULTS = {
   tariffEscalation: 0.05,
   exportCompensation: 0.9,
 
-  // Financing (EFL REF — configurable defaults)
+  // Financing (indicative marketplace defaults — configurable per partner)
   interestRate: 11.0,
   tenureYears: 7,
   financingPct: 0.8,
@@ -63,16 +63,16 @@ export function rateForCapacity(capacityKw) {
   return band ? band.ratePerWatt : 40;
 }
 
-// EFL Renewable Energy Funding product config (indicative)
-export const EFL_PRODUCT = {
-  name: "EFL Renewable Energy Funding (REF)",
+// Indicative marketplace financing product config (configurable per partner)
+export const FINANCING_PRODUCT = {
+  name: "Solar Financing via partner banks & NBFCs",
   maxLoan: "Up to ₹3 Crore per project (indicative)",
   collateralFree: "Collateral-free options up to ₹50 Lakh (subject to credit assessment)",
-  interestRange: "Indicative ~10.5%–13% p.a. (subject to credit profile & approval)",
-  tenureRange: "3–10 years",
+  interestRange: "Indicative ~7%–13% p.a. (subject to partner, credit profile & approval)",
+  tenureRange: "3–15 years",
   moratorium: "Up to 3–6 months (project-dependent)",
   turnaround: "Fast-track assessment (indicative 3–7 working days on complete documents)",
-  disclaimer: "All financing figures are indicative and subject to EFL's credit assessment, applicable terms and approval.",
+  disclaimer: "All financing figures are indicative and subject to the financing partner's credit assessment, applicable terms and approval.",
 };
 
 export const DISCLAIMERS = {
@@ -80,7 +80,7 @@ export const DISCLAIMERS = {
   incentive: "Government incentive eligibility is subject to applicable rules and approval by the relevant authority.",
   tariff: "Tariffs and regulatory charges are subject to change.",
   tax: "Tax treatment should be confirmed with a qualified tax professional. Indicative information only.",
-  financing: "Financing figures are indicative and subject to EFL's credit assessment, applicable terms and approval.",
+  financing: "Financing figures are indicative and subject to the financing partner's credit assessment, applicable terms and approval.",
   rec: "REC / carbon-credit eligibility and monetization are not guaranteed.",
   data: "Data is indicative and source-tagged. Verify against the latest official orders before financial decisions.",
 };

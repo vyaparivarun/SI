@@ -47,7 +47,7 @@ export default function Resources() {
             <Card key={d.group} className="!p-5"><div className="font-semibold text-slate-100 text-sm mb-3">{d.group}</div><ul className="space-y-1.5">{d.items.map((it) => <li key={it} className="text-xs text-slate-400 flex gap-2"><span className="text-amber-500">•</span>{it}</li>)}</ul></Card>
           ))}
         </div>
-        <Disclaimer className="mt-6">Not every customer will require every document. The exact list depends on the borrower profile and project, and is confirmed during EFL's assessment.</Disclaimer>
+        <Disclaimer className="mt-6">Not every customer will require every document. The exact list depends on the borrower profile and project, and is confirmed during the financing partner's assessment.</Disclaimer>
       </Section>
     </div>
   );

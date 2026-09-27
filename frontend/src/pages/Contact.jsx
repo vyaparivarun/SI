@@ -27,15 +27,15 @@ export default function Contact() {
 
   return (
     <div>
-      <PageHeader eyebrow="Contact / Get a Quote" title="Talk to the EFL Renewable Energy Funding team"
-        subtitle="Share your details for a solar financing assessment or a callback from an EFL sales specialist." />
+      <PageHeader eyebrow="Contact / Get a Quote" title="Talk to the Solar Intelligence team"
+        subtitle="Share your details for a solar financing assessment or a callback from a Solar Intelligence specialist." />
       <Section className="py-14">
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="space-y-4">
-            {[[Phone, "Sales", "+91 1800-XXX-XXXX (demo)"], [Mail, "Email", "ref-solar@efl.example (demo)"], [MapPin, "Vertical", "Renewable Energy Funding (REF)"]].map(([Icon, t, d]) => (
+            {[[Phone, "Sales", "+91 1800-XXX-XXXX (demo)"], [Mail, "Email", "hello@solarintelligence.example (demo)"], [MapPin, "Platform", "Solar Savings, Financing & EPC Marketplace"]].map(([Icon, t, d]) => (
               <Card key={t} className="!p-5 flex items-center gap-4"><div className="w-10 h-10 rounded-lg bg-amber-500/10 flex items-center justify-center"><Icon className="w-5 h-5 text-amber-400" /></div><div><div className="text-xs text-slate-500 font-mono uppercase tracking-wider">{t}</div><div className="text-sm text-slate-200">{d}</div></div></Card>
             ))}
-            <Disclaimer>EFL is the financing partner, not an EPC installer. We help evaluate and finance eligible C&I solar projects.</Disclaimer>
+            <Disclaimer>Solar Intelligence is a neutral marketplace connecting customers, EPCs and financing partners — not an EPC installer or a lender. We help evaluate and finance eligible C&I solar projects.</Disclaimer>
           </div>
 
           <Card className="lg:col-span-2">

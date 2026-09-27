@@ -52,7 +52,7 @@ export default function ProjectModels() {
           <p className="text-sm text-slate-400 mb-4 max-w-2xl">The calculator lets you compare CAPEX (with financing) against no-solar and different financing shares, so you can see cash flow, payback and returns for each.</p>
           <div className="flex flex-wrap gap-3">
             <Btn as={Link} to="/calculator">Compare in calculator <ArrowRight className="w-4 h-4" /></Btn>
-            <Btn as={Link} to="/financing" variant="secondary">See EFL financing</Btn>
+            <Btn as={Link} to="/financing" variant="secondary">See financing options</Btn>
           </div>
         </Card>
         <Disclaimer className="mt-6">Captive and group-captive models must satisfy the ≥26% equity / ≥51% consumption norms to retain captive status and related exemptions. Open-access economics depend on state wheeling, banking, cross-subsidy and additional surcharges.</Disclaimer>

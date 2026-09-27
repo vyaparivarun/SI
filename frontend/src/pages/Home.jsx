@@ -50,8 +50,8 @@ export default function Home() {
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <div className="animate-fade-up">
               <div className="flex items-center gap-2 mb-6">
-                <Pill tone="emerald"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 live-dot" /> EFL Renewable Energy Funding</Pill>
-                <Pill tone="slate">Financing partner — not an EPC</Pill>
+                <Pill tone="emerald"><span className="w-1.5 h-1.5 rounded-full bg-emerald-400 live-dot" /> Solar Intelligence</Pill>
+                <Pill tone="slate">Neutral marketplace — Customer · EPC · Financiers</Pill>
               </div>
               <h1 className="font-head text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-50 leading-[1.05]">
                 How much can your business <span className="text-amber-500">save</span> by going solar?
@@ -113,7 +113,7 @@ export default function Home() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           {heroMetrics.map((mm) => <Metric key={mm.label} {...mm} testId={`home-metric-${mm.label.toLowerCase().replace(/[^a-z]+/g, "-")}`} />)}
         </div>
-        <p className="text-[11px] text-slate-600 font-mono mt-3">Illustrative figures from the EFL calculation engine · Assumptions: ₹8.5/kWh tariff, 5% escalation, 80% financing @ 11% / 7yr · Not a guarantee.</p>
+        <p className="text-[11px] text-slate-600 font-mono mt-3">Illustrative figures from the Solar Intelligence calculation engine · Assumptions: ₹8.5/kWh tariff, 5% escalation, 80% financing @ 11% / 7yr · Not a guarantee.</p>
       </Section>
 
       {/* JOURNEY */}
@@ -138,7 +138,7 @@ export default function Home() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-5">
           {[
             { icon: CalcIcon, title: "6-Step Solar Calculator", desc: "Location, business profile, bill, site, system and cost — with an auto-recommended system size.", href: "/calculator", tone: "amber" },
-            { icon: IndianRupee, title: "Financing & EMI Engine", desc: "EMI, amortization, DSCR and financing scenarios (70/80/100%) configurable by EFL.", href: "/financing", tone: "emerald" },
+            { icon: IndianRupee, title: "Financing & EMI Engine", desc: "EMI, amortization, DSCR and financing scenarios (70/80/100%) across banks, NBFCs & DFIs.", href: "/financing", tone: "emerald" },
             { icon: BarChart3, title: "25-Year Financial Model", desc: "Cash flow, cumulative savings, IRR, NPV, payback and sensitivity — all charted.", href: "/calculator", tone: "blue" },
             { icon: MapPin, title: "State & DISCOM Database", desc: "Irradiation, C&I tariffs, net-metering & open-access rules for every state and major DISCOM.", href: "/states", tone: "violet" },
             { icon: Landmark, title: "Government Benefits Engine", desc: "Accelerated depreciation, GEOA, GST, state incentives — with dynamic eligibility.", href: "/government", tone: "amber" },
@@ -209,7 +209,7 @@ export default function Home() {
           <div className="relative grid lg:grid-cols-2 gap-8 items-center">
             <div>
               <h2 className="font-head text-3xl lg:text-4xl font-bold text-slate-50">Your solar project doesn't have to wait for upfront capital.</h2>
-              <p className="text-slate-400 mt-4 max-w-lg">Explore financing for eligible industrial and commercial solar projects through EFL's Renewable Energy Funding vertical.</p>
+              <p className="text-slate-400 mt-4 max-w-lg">Solar Intelligence matches eligible industrial and commercial solar projects with the right banks, NBFCs and DFIs — so you can go solar without upfront capital.</p>
               <div className="mt-6 flex flex-wrap gap-3">
                 <Btn as={Link} to="/calculator" data-testid="banner-cta-calc">Start the Calculator <ArrowRight className="w-4 h-4" /></Btn>
                 <Btn as={Link} to="/financing" variant="secondary">See financing details</Btn>
@@ -225,7 +225,7 @@ export default function Home() {
             </div>
           </div>
         </div>
-        <Disclaimer className="mt-4">Financing figures are indicative and subject to EFL's credit assessment, applicable terms and approval. EFL is the financing partner, not an EPC installer.</Disclaimer>
+        <Disclaimer className="mt-4">Financing figures are indicative and subject to the financing partner's credit assessment, applicable terms and approval. Solar Intelligence is a neutral marketplace, not an EPC installer or lender.</Disclaimer>
       </Section>
     </div>
   );

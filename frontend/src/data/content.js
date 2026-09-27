@@ -22,7 +22,7 @@ export const BOS_ITEMS = [
 ];
 
 export const PROJECT_MODELS = [
-  { key: "CAPEX", ownership: "Customer owns the plant", capex: "Customer (own funds or EFL financing)", savings: "Highest — full savings + depreciation benefit", risk: "Customer bears O&M & performance", best: "Strong balance sheet, high tariff, long horizon", note: "Customer captures all savings, accelerated depreciation and any REC upside. EFL financing removes the upfront capital barrier." },
+  { key: "CAPEX", ownership: "Customer owns the plant", capex: "Customer (own funds or partner financing)", savings: "Highest — full savings + depreciation benefit", risk: "Customer bears O&M & performance", best: "Strong balance sheet, high tariff, long horizon", note: "Customer captures all savings, accelerated depreciation and any REC upside. Partner financing removes the upfront capital barrier." },
   { key: "OPEX / RESCO", ownership: "Developer owns the plant", capex: "Developer / third party", savings: "Discount on per-unit tariff; no capex", risk: "Developer bears O&M & performance", best: "Prefer zero capex, off balance sheet", note: "Customer pays only for generated units at an agreed rate below grid tariff. Depreciation benefit accrues to the developer, not the customer." },
   { key: "PPA", ownership: "Developer / IPP", capex: "Developer", savings: "Fixed/escalating tariff over 10–25 yrs", risk: "Contractual — take-or-pay terms", best: "Large offsite / open-access procurement", note: "Long-term power purchase agreement, often via open access from an offsite plant." },
   { key: "Captive", ownership: "Consumer (≥26% equity, ≥51% consumption)", capex: "Consumer / SPV", savings: "High + open-access charge savings", risk: "Compliance with captive rules", best: "Large consumers wanting offsite solar", note: "Consumer owns qualifying equity in the generating plant and consumes proportionate power; exempt from cross-subsidy surcharge if captive criteria are met." },
@@ -33,9 +33,9 @@ export const PROJECT_MODELS = [
 export const FINANCING_JOURNEY = [
   { step: 1, title: "Calculate Opportunity", desc: "Use the solar calculator to size the project, savings, EMI and payback." },
   { step: 2, title: "Submit Details", desc: "Share business, electricity and project details for a financing assessment." },
-  { step: 3, title: "Initial Assessment", desc: "EFL reviews indicative eligibility and project economics." },
+  { step: 3, title: "Initial Assessment", desc: "The financing partner reviews indicative eligibility and project economics." },
   { step: 4, title: "Document Collection", desc: "KYC, financials and project documents are collected." },
-  { step: 5, title: "Credit Assessment", desc: "EFL's credit team evaluates the borrower and project cashflows (DSCR)." },
+  { step: 5, title: "Credit Assessment", desc: "The partner's credit team evaluates the borrower and project cashflows (DSCR)." },
   { step: 6, title: "Sanction", desc: "Loan terms — amount, rate, tenure, moratorium — are sanctioned." },
   { step: 7, title: "EPC Confirmation", desc: "EPC scope, BoM (ALMM-compliant) and timeline are confirmed." },
   { step: 8, title: "Documentation", desc: "Loan and security documentation is executed." },
@@ -74,7 +74,7 @@ export const FAQS = [
   { q: "How much roof area do I need?", a: "As a rule of thumb, about 100 sq ft of shadow-free roof supports roughly 1 kW of solar. A 500 kW plant needs roughly 50,000 sq ft. The calculator caps the recommended size by your available area." },
   { q: "Will my monthly savings be more than my EMI?", a: "Often yes for high-tariff, high-daytime-load businesses — but it depends on tariff, generation, project cost and loan terms. The Solar vs EMI cash-flow view shows exactly when savings exceed EMI." },
   { q: "What is the typical payback period?", a: "Indicatively 3–6 years for strong C&I cases, but it varies with tariff, irradiation, cost and financing. The calculator computes both simple and discounted payback for your inputs." },
-  { q: "Can EFL finance the whole project?", a: "EFL offers financing (indicatively up to ₹3 Cr per project) subject to credit assessment. Financing share, rate and tenure are decided during assessment — all figures on this platform are indicative." },
+  { q: "Can the whole project be financed?", a: "Financing partners on the platform offer solar loans (indicatively up to ₹3 Cr per project) subject to credit assessment. Financing share, rate and tenure are decided during assessment — all figures on this platform are indicative." },
   { q: "Do I need ALMM-listed panels?", a: "From 1 June 2026, grid-connected, net-metered and open-access projects must use ALMM List-I modules and List-II cells. Ensure your EPC quotes ALMM-compliant equipment." },
   { q: "Are REC earnings guaranteed?", a: "No. REC eligibility, registration, issuance and price depend on project structure and CERC/state rules. Any REC value shown is indicative only." },
 ];
