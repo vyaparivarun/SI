@@ -63,6 +63,41 @@ export function rateForCapacity(capacityKw) {
   return band ? band.ratePerWatt : 40;
 }
 
+// Panel technology specs — adjust system PR contribution & annual degradation.
+// pr = indicative delivered performance ratio for the tech; deg = yearly loss.
+export const PANEL_TECH_SPECS = {
+  "Mono PERC": { pr: 0.77, degradationYr: 0.0055, efficiency: "20–21%", note: "Mature, cost-effective mainstream technology." },
+  "TOPCon": { pr: 0.79, degradationYr: 0.0040, efficiency: "22–23%", note: "Higher efficiency & better low-light/temperature behaviour; volume leader for new C&I." },
+  "HJT": { pr: 0.80, degradationYr: 0.0025, efficiency: "23–24%", note: "Highest efficiency & lowest degradation; premium price. Best where area is tight." },
+  "Thin Film (CdTe)": { pr: 0.75, degradationYr: 0.0050, efficiency: "16–19%", note: "Better in high heat/diffuse light; needs more area for same output." },
+};
+
+export const PANEL_WATTAGES = [400, 440, 540, 580, 610, 700];
+
+// O&M / recurring-charge unit options and defaults (all editable in the UI).
+export const OM_UNITS = [
+  { value: "pctCost", label: "% of project cost / yr" },
+  { value: "perW", label: "₹ per watt / yr" },
+  { value: "perMonth", label: "₹ per month" },
+];
+
+export const OM_DEFAULTS = {
+  amc: { val: 0.5, unit: "pctCost" },       // Annual Maintenance Contract
+  cmc: { val: 0, unit: "pctCost" },         // Comprehensive Maintenance Contract
+  insurance: { val: 0.35, unit: "pctCost" },
+  other: { name: "Other charges", val: 0, unit: "pctCost" },
+  escalation: 5,                             // % per year
+};
+
+// Convert one O&M head to an absolute year-1 ₹/year figure.
+export function omHeadAnnual(head, projectCost, capacityW) {
+  const v = Number(head?.val) || 0;
+  if (v <= 0) return 0;
+  if (head.unit === "perW") return capacityW * v;
+  if (head.unit === "perMonth") return v * 12;
+  return projectCost * (v / 100); // pctCost
+}
+
 // Indicative marketplace financing product config (configurable per partner)
 export const FINANCING_PRODUCT = {
   name: "Solar Financing via partner banks & NBFCs",

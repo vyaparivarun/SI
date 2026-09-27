@@ -367,12 +367,13 @@ export function runProjectModel(inp) {
     interestRate = 11, tenureYears = 7, processingFeePct = 1,
     discountRate = 0.10, omPctOfCost = 0.01, years = 25,
     gridEmissionFactor = 0.71, selfConsumption = 0.85,
+    degradationYr = 0.006, annualOMOverride = null, omEscalation = 0.03,
   } = inp;
 
   const shadingLoss = { Low: 0.02, Medium: 0.06, High: 0.12 }[shading] ?? 0.03;
 
   const gen = calculateSolarGeneration({
-    capacityKw, irradiation, performanceRatio, shadingLoss, years,
+    capacityKw, irradiation, performanceRatio, shadingLoss, degradationYr, years,
   });
   const cost = calculateProjectCost({ capacityKw, ratePerWatt });
   const savings = calculateElectricitySavings({
@@ -392,14 +393,16 @@ export function runProjectModel(inp) {
   const rec = calculateRECEstimate({ year1Generation: gen.year1Generation });
 
   // Annual project cashflow (equity perspective): savings - O&M - debt service
-  const annualOM0 = cost.totalCost * omPctOfCost;
+  const annualOM0 = annualOMOverride != null ? annualOMOverride : cost.totalCost * omPctOfCost;
   const projectCashflow = [-equity]; // year 0 equity outflow
   const netAnnual = [];
   const cashflowRows = [];
   let cumNet = 0;
+  let totalOM = 0;
   for (let y = 1; y <= years; y++) {
     const save = savings.rows[y - 1].annualSaving;
-    const om = annualOM0 * Math.pow(1.03, y - 1); // O&M escalates ~3%
+    const om = annualOM0 * Math.pow(1 + omEscalation, y - 1); // O&M escalates
+    totalOM += om;
     const ds = amort.yearly[y - 1]?.debtService || 0;
     const net = save - om - ds; // equity holder net cash after debt service
     cumNet += net;
@@ -430,7 +433,7 @@ export function runProjectModel(inp) {
   const monthlyOutflowWithSolar = monthlyEMI + residualMonthlyBill + annualOM0 / 12;
   const netMonthlyBenefit = currentMonthlyBill - monthlyOutflowWithSolar;
 
-  const lifetimeNet = savings.lifetimeSavings - loan.totalInterest - (annualOM0 * years * 1.4) - equity;
+  const lifetimeNet = savings.lifetimeSavings - loan.totalInterest - totalOM - equity;
 
   return {
     inputs: inp,
@@ -449,6 +452,7 @@ export function runProjectModel(inp) {
       lifetimeNetBenefit: lifetimeNet,
       currentMonthlyBill, residualMonthlyBill, monthlyEMI, monthlyOutflowWithSolar, netMonthlyBenefit,
       annualSavingsY1: savings.year1Saving,
+      annualOM: annualOM0, totalOM,
     },
   };
 }

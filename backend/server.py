@@ -256,6 +256,150 @@ async def platform_stats():
     return {"leads": leads, "projects": projects, "partners": partners}
 
 
+# --------------------- Solar resource (Open-Meteo) ---------------------
+# Resolves a location (pincode / city+state / lat+lon) to real solar resource
+# using free, keyless public APIs:
+#   - Zippopotam.us (India pincode -> lat/lon)
+#   - Open-Meteo Geocoding (city name -> lat/lon)
+#   - Open-Meteo Historical Archive (last ~12 months daily sunshine + GHI)
+# Results are cached in Mongo (by rounded lat/lon) to avoid repeat calls.
+import httpx  # noqa: E402
+from datetime import timedelta  # noqa: E402
+
+SUNNY_DAY_MIN_HOURS = 5.0        # a day is "productive/sunny" if >= 5 sunshine hours
+SOLAR_CACHE_TTL_DAYS = 14
+
+
+async def _geocode_pincode(pincode: str):
+    url = f"https://api.zippopotam.us/IN/{pincode}"
+    async with httpx.AsyncClient(timeout=12) as cx:
+        r = await cx.get(url)
+        if r.status_code != 200:
+            return None
+        data = r.json()
+        places = data.get("places") or []
+        if not places:
+            return None
+        p = places[0]
+        return {
+            "lat": float(p["latitude"]),
+            "lon": float(p["longitude"]),
+            "label": f"{p.get('place name','')}, {p.get('state','')} {pincode}".strip(),
+        }
+
+
+async def _geocode_city(name: str, country_code: str = "IN"):
+    url = "https://geocoding-api.open-meteo.com/v1/search"
+    params = {"name": name, "count": 1, "language": "en", "countryCode": country_code}
+    async with httpx.AsyncClient(timeout=12) as cx:
+        r = await cx.get(url, params=params)
+        if r.status_code != 200:
+            return None
+        results = (r.json() or {}).get("results") or []
+        if not results:
+            return None
+        g = results[0]
+        label = ", ".join([x for x in [g.get("name"), g.get("admin1"), g.get("country")] if x])
+        return {"lat": float(g["latitude"]), "lon": float(g["longitude"]), "label": label}
+
+
+async def _fetch_archive(lat: float, lon: float):
+    end = (datetime.now(timezone.utc) - timedelta(days=6)).date()
+    start = end - timedelta(days=364)
+    url = "https://archive-api.open-meteo.com/v1/archive"
+    params = {
+        "latitude": round(lat, 3), "longitude": round(lon, 3),
+        "start_date": start.isoformat(), "end_date": end.isoformat(),
+        "daily": "sunshine_duration,shortwave_radiation_sum",
+        "timezone": "auto",
+    }
+    async with httpx.AsyncClient(timeout=25) as cx:
+        r = await cx.get(url, params=params)
+        if r.status_code != 200:
+            return None
+        daily = (r.json() or {}).get("daily") or {}
+        sun = daily.get("sunshine_duration") or []
+        rad = daily.get("shortwave_radiation_sum") or []
+        sun = [s for s in sun if s is not None]
+        rad = [x for x in rad if x is not None]
+        if not rad:
+            return None
+        total_days = len(rad)
+        # shortwave_radiation_sum is MJ/m2/day -> kWh/m2/day = /3.6
+        ghi_vals = [x / 3.6 for x in rad]
+        avg_ghi = sum(ghi_vals) / len(ghi_vals)
+        sun_hours = [s / 3600.0 for s in sun]
+        avg_sun_hours = (sum(sun_hours) / len(sun_hours)) if sun_hours else None
+        sunny_days = sum(1 for h in sun_hours if h >= SUNNY_DAY_MIN_HOURS)
+        # scale sunny-day count to a full 365-day year for clarity
+        sunny_days_year = round(sunny_days * 365 / total_days) if total_days else sunny_days
+        return {
+            "avgDailyGHI": round(avg_ghi, 2),
+            "avgSunshineHours": round(avg_sun_hours, 1) if avg_sun_hours is not None else None,
+            "sunnyDays": sunny_days_year,
+            "totalDaysAnalyzed": total_days,
+            "periodStart": start.isoformat(),
+            "periodEnd": end.isoformat(),
+            "sunnyDayThresholdHours": SUNNY_DAY_MIN_HOURS,
+        }
+
+
+@api_router.get("/solar/resource")
+async def solar_resource(
+    pincode: Optional[str] = None,
+    city: Optional[str] = None,
+    state: Optional[str] = None,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+):
+    loc = None
+    if lat is not None and lon is not None:
+        loc = {"lat": lat, "lon": lon, "label": f"{round(lat,3)}, {round(lon,3)}"}
+    elif pincode:
+        loc = await _geocode_pincode(pincode.strip())
+        if not loc:
+            loc = await _geocode_city(pincode.strip())
+        if not loc:
+            raise HTTPException(status_code=404, detail="Could not resolve that pincode. Try a city name.")
+    elif city:
+        query = f"{city},{state}" if state else city
+        loc = await _geocode_city(query)
+        if not loc:
+            raise HTTPException(status_code=404, detail="Could not resolve that city. Try a pincode.")
+    else:
+        raise HTTPException(status_code=400, detail="Provide a pincode, city, or lat/lon.")
+
+    key = f"{round(loc['lat'],2)},{round(loc['lon'],2)}"
+    cached = await db.solar_cache.find_one({"key": key}, {"_id": 0})
+    if cached:
+        try:
+            fetched = datetime.fromisoformat(cached.get("fetchedAt"))
+            if datetime.now(timezone.utc) - fetched < timedelta(days=SOLAR_CACHE_TTL_DAYS):
+                out = cached["data"]
+                out["location"] = loc
+                out["cached"] = True
+                return out
+        except Exception:
+            pass
+
+    try:
+        data = await _fetch_archive(loc["lat"], loc["lon"])
+    except Exception as e:
+        logger.warning(f"Open-Meteo archive failed: {e}")
+        raise HTTPException(status_code=502, detail="Weather service is temporarily unavailable. Please try again.")
+    if not data:
+        raise HTTPException(status_code=502, detail="No solar data available for this location.")
+
+    await db.solar_cache.update_one(
+        {"key": key},
+        {"$set": {"key": key, "data": data, "fetchedAt": now_iso()}},
+        upsert=True,
+    )
+    data["location"] = loc
+    data["cached"] = False
+    return data
+
+
 app.include_router(api_router)
 
 app.add_middleware(

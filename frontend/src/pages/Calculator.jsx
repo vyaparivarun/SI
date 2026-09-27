@@ -8,7 +8,7 @@ import { STATES, getStateByName } from "@/data/states";
 import { getDiscomsByState, getDiscomByName, DISCOMS } from "@/data/discoms";
 import { BUSINESS_TYPES, getIndustry } from "@/data/industries";
 import { DEMO_CUSTOMER } from "@/data/content";
-import { DEFAULTS, rateForCapacity } from "@/data/config";
+import { DEFAULTS, rateForCapacity, PANEL_TECH_SPECS, PANEL_WATTAGES, OM_UNITS, omHeadAnnual } from "@/data/config";
 import { evaluateEligibility } from "@/data/incentives";
 import {
   runProjectModel, runSensitivity, runTornado, calculateSuitabilityScore,
@@ -16,12 +16,12 @@ import {
   calculateFinancingPackage, calculateFlatRateEMI, calculateLease,
 } from "@/lib/engine";
 import { getTariffTrend, buildTariffHistory, TARIFF_TREND_META, topTariffRisers } from "@/data/tariffHistory";
-import { createLead } from "@/lib/api";
+import { createLead, getSolarResource } from "@/lib/api";
 import { inr, inrCompact, kw, kwh, num, pct, yrs } from "@/lib/format";
 import {
   MapPin, Receipt, Sun, Wallet, ArrowRight, ArrowLeft, Sparkles,
   TrendingUp, Leaf, Award, IndianRupee, CheckCircle2, Printer, Gauge, BarChart3,
-  Zap, Ruler, Building2, MoveRight, HelpCircle,
+  Zap, Ruler, Building2, MoveRight, HelpCircle, CloudSun, Loader2, Cpu,
 } from "lucide-react";
 
 const STEPS = [
@@ -33,12 +33,25 @@ const STEPS = [
 
 const SHADE_LOSS = { Low: 0.02, Medium: 0.06, High: 0.12 };
 
+function OMInput({ label, head, onChange, testId }) {
+  return (
+    <div className="grid sm:grid-cols-[1.4fr_1fr] gap-3 items-end">
+      <Field label={label}><NumberInput value={head.val} onChange={(e) => onChange({ ...head, val: e.target.value })} data-testid={testId} /></Field>
+      <Field label="Unit"><Select value={head.unit} onChange={(e) => onChange({ ...head, unit: e.target.value })} options={OM_UNITS} /></Field>
+    </div>
+  );
+}
+
 const initialState = {
-  state: "", city: "", discom: "",
+  state: "", city: "", discom: "", pincode: "",
   businessType: "", billMethod: "bill", monthlyBill: "", monthlyUnits: "", tariff: 8,
   installationType: "Rooftop", roofAreaSqft: "", landAreaAcres: "", shading: "Low",
+  panelTech: "TOPCon", panelWattage: 580, useWeather: true,
   autoSize: true, capacityKw: "", ratePerWatt: "",
   tariffEscalation: 5, financingPct: 80, interestRate: DEFAULTS.interestRate, tenureYears: DEFAULTS.tenureYears,
+  amc: { val: 0.5, unit: "pctCost" }, cmc: { val: 0, unit: "pctCost" },
+  insurance: { val: 0.35, unit: "pctCost" }, otherOM: { name: "Other charges", val: 0, unit: "pctCost" },
+  omEscalation: 5,
 };
 
 export default function Calculator() {
@@ -47,11 +60,19 @@ export default function Calculator() {
   const [showResults, setShowResults] = useState(false);
   const [stepError, setStepError] = useState("");
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showOM, setShowOM] = useState(false);
+  const [weather, setWeather] = useState(null);
+  const [weatherLoading, setWeatherLoading] = useState(false);
+  const [weatherError, setWeatherError] = useState("");
   const upd = (patch) => setF((s) => ({ ...s, ...patch }));
   const reportRef = useRef(null);
 
   const stateObj = getStateByName(f.state);
-  const irradiation = stateObj?.irradiation || 5.2;
+  const panelSpec = PANEL_TECH_SPECS[f.panelTech] || PANEL_TECH_SPECS["TOPCon"];
+  const performanceRatio = panelSpec.pr;
+  const degradationYr = panelSpec.degradationYr;
+  const baseIrradiation = stateObj?.irradiation || 5.2;
+  const irradiation = (f.useWeather && weather?.avgDailyGHI) ? weather.avgDailyGHI : baseIrradiation;
   const stateDiscoms = f.state ? getDiscomsByState(f.state) : [];
   const selectedDiscom = f.discom ? getDiscomByName(f.discom) : null;
 
@@ -67,7 +88,7 @@ export default function Calculator() {
 
   // ---------- Area-driven sizing ----------
   const shadingLoss = SHADE_LOSS[f.shading] ?? 0.03;
-  const specificYield = irradiation * 365 * DEFAULTS.performanceRatio * (1 - shadingLoss) * DEFAULTS.availability;
+  const specificYield = irradiation * 365 * performanceRatio * (1 - shadingLoss) * DEFAULTS.availability;
   const fullKw = fullBillCapacityKw({ annualUnits, specificYield, selfConsumption: DEFAULTS.selfConsumption });
   const areaNeed = areaForCapacity(fullKw);
   const areaCapKw = capacityFromArea({ roofAreaSqft: Number(f.roofAreaSqft) || 0, landAreaAcres: Number(f.landAreaAcres) || 0 });
@@ -80,15 +101,42 @@ export default function Calculator() {
 
   const ratePerWatt = Number(f.ratePerWatt) || rateForCapacity(capacityKw);
 
+  // Panel-level output & O&M cost engine
+  const perPanelDailyUnits = (Number(f.panelWattage) / 1000) * (specificYield / 365);
+  const panelCount = capacityKw > 0 ? Math.ceil((capacityKw * 1000) / Number(f.panelWattage)) : 0;
+  const projectCostEst = capacityKw * 1000 * ratePerWatt;
+  const capacityW = capacityKw * 1000;
+  const annualOM =
+    omHeadAnnual(f.amc, projectCostEst, capacityW) +
+    omHeadAnnual(f.cmc, projectCostEst, capacityW) +
+    omHeadAnnual(f.insurance, projectCostEst, capacityW) +
+    omHeadAnnual(f.otherOM, projectCostEst, capacityW);
+  const omEscalationFrac = (Number(f.omEscalation) || 0) / 100;
+
+  const fetchWeather = async () => {
+    if (!f.pincode && !f.city) { toast.error("Enter a pincode or city first"); return; }
+    setWeatherLoading(true); setWeatherError("");
+    try {
+      const params = f.pincode ? { pincode: f.pincode } : { city: f.city, state: f.state };
+      const data = await getSolarResource(params);
+      setWeather(data); upd({ useWeather: true });
+      toast.success(`Live solar data loaded for ${data.location?.label || "your area"}`);
+    } catch (e) {
+      const msg = e?.response?.data?.detail || "Could not fetch live solar data — using state average.";
+      setWeatherError(msg); toast.error(msg);
+    } finally { setWeatherLoading(false); }
+  };
+
   const model = useMemo(() => {
     if (!capacityKw || !annualUnits) return null;
     return runProjectModel({
-      capacityKw, irradiation, performanceRatio: DEFAULTS.performanceRatio, shading: f.shading,
+      capacityKw, irradiation, performanceRatio, degradationYr, shading: f.shading,
       ratePerWatt, annualUnits, effectiveTariff, daytimePct: 0.65,
       tariffEscalation: (Number(f.tariffEscalation) || 5) / 100, financingPct: (Number(f.financingPct) || 80) / 100,
       interestRate: Number(f.interestRate) || 11, tenureYears: Number(f.tenureYears) || 7,
+      annualOMOverride: annualOM, omEscalation: omEscalationFrac,
     });
-  }, [capacityKw, irradiation, f.shading, ratePerWatt, annualUnits, effectiveTariff, f.tariffEscalation, f.financingPct, f.interestRate, f.tenureYears]);
+  }, [capacityKw, irradiation, performanceRatio, degradationYr, f.shading, ratePerWatt, annualUnits, effectiveTariff, f.tariffEscalation, f.financingPct, f.interestRate, f.tenureYears, annualOM, omEscalationFrac]);
 
   const loadDemo = () => {
     upd({
@@ -177,6 +225,35 @@ export default function Calculator() {
                         <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Using {selectedDiscom.name}'s FY25-26 tariff of <span className="num font-semibold">₹{selectedDiscom.ciTariff}/kWh</span> (HT energy ₹{selectedDiscom.energyChargeHT}, demand ₹{selectedDiscom.demandCharge}/kVA).
                       </div>
                     )}
+
+                    <div className="pt-3 border-t border-white/10">
+                      <div className="text-xs uppercase tracking-wider text-slate-500 font-mono mb-3 flex items-center gap-1.5"><CloudSun className="w-3.5 h-3.5 text-amber-400" /> Live solar data (optional, recommended)</div>
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <Field label="Pincode" hint="Pulls last-12-months sunshine & irradiance for your exact location">
+                          <TextInput value={f.pincode} onChange={(e) => upd({ pincode: e.target.value })} placeholder="e.g. 302001" data-testid="calc-pincode" />
+                        </Field>
+                        <div className="flex items-end">
+                          <Btn type="button" variant="outline" onClick={fetchWeather} disabled={weatherLoading} className="w-full" data-testid="fetch-weather-btn">
+                            {weatherLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Fetching…</> : <><CloudSun className="w-4 h-4" /> Get live solar data</>}
+                          </Btn>
+                        </div>
+                      </div>
+                      {weatherError && <div className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2" data-testid="weather-error">{weatherError}</div>}
+                      {weather && (
+                        <div className="mt-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20" data-testid="weather-result">
+                          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+                            <div className="text-xs text-slate-300">{weather.location?.label}</div>
+                            <Segmented options={[{ value: true, label: "Use live data" }, { value: false, label: "State average" }]} value={f.useWeather} onChange={(v) => upd({ useWeather: v })} testId="weather-toggle" />
+                          </div>
+                          <div className="grid grid-cols-3 gap-3 text-center">
+                            <div><div className="num text-xl font-bold text-amber-400">{weather.sunnyDays}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Sunny days / yr</div></div>
+                            <div><div className="num text-xl font-bold text-emerald-400">{weather.avgDailyGHI}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">kWh/m²/day</div></div>
+                            <div><div className="num text-xl font-bold text-blue-400">{weather.avgSunshineHours}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Sun hrs / day</div></div>
+                          </div>
+                          <div className="text-[10px] text-slate-600 mt-3">Based on {weather.totalDaysAnalyzed} days ({weather.periodStart} → {weather.periodEnd}). A day counts as "sunny" at ≥{weather.sunnyDayThresholdHours}h sunshine. Source: Open-Meteo (ERA5).</div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 )}
 
@@ -223,6 +300,19 @@ export default function Calculator() {
                         : <Field label="Roof area available (sq ft)"><NumberInput value={f.roofAreaSqft} onChange={(e) => upd({ roofAreaSqft: e.target.value })} suffix="sqft" placeholder="e.g. 80000" data-testid="calc-roof" /></Field>}
                       <Field label="Shading"><Segmented options={["Low", "Medium", "High"]} value={f.shading} onChange={(v) => upd({ shading: v })} testId="calc-shading" /></Field>
                     </div>
+
+                    <div className="pt-1">
+                      <div className="text-xs uppercase tracking-wider text-slate-500 font-mono mb-3 flex items-center gap-1.5"><Cpu className="w-3.5 h-3.5 text-amber-400" /> Panel technology & size</div>
+                      <div className="grid sm:grid-cols-2 gap-4">
+                        <Field label="Panel technology" hint={panelSpec.note}><Select value={f.panelTech} onChange={(e) => upd({ panelTech: e.target.value })} options={Object.keys(PANEL_TECH_SPECS)} data-testid="calc-paneltech" /></Field>
+                        <Field label="Panel wattage (Wp)"><Select value={String(f.panelWattage)} onChange={(e) => upd({ panelWattage: Number(e.target.value) })} options={PANEL_WATTAGES.map((w) => ({ value: String(w), label: `${w} Wp` }))} data-testid="calc-panelwattage" /></Field>
+                      </div>
+                      {capacityKw > 0 && (
+                        <div className="mt-3 p-3.5 rounded-lg bg-blue-500/5 border border-blue-500/15 text-sm text-slate-300" data-testid="panel-readout">
+                          One <span className="text-slate-100 font-semibold">{f.panelWattage} Wp {f.panelTech}</span> panel makes about <span className="num text-blue-400 font-semibold">{perPanelDailyUnits.toFixed(1)} units/day</span>. Your <span className="num font-semibold">{kw(capacityKw)}</span> plant ≈ <span className="num text-amber-400 font-semibold">{num(panelCount)} panels</span> ({panelSpec.efficiency} efficiency).
+                        </div>
+                      )}
+                    </div>
                     {fullKw > 0 && <Btn variant="outline" size="sm" onClick={setAreaToNeeded} data-testid="use-full-area-btn"><Ruler className="w-4 h-4" /> I have enough area — cover my full bill</Btn>}
 
                     {hasAreaInput && fullKw > 0 && (
@@ -268,6 +358,26 @@ export default function Calculator() {
                         {!f.autoSize && <Field label="Custom capacity (kW)"><NumberInput value={f.capacityKw} onChange={(e) => upd({ capacityKw: e.target.value })} suffix="kW" placeholder={String(fitKw)} data-testid="calc-capacity" /></Field>}
                       </div>
                     )}
+                    <div className="pt-1">
+                      <button type="button" onClick={() => setShowOM(!showOM)} className="text-xs text-amber-400 hover:text-amber-300 font-medium" data-testid="toggle-om">
+                        {showOM ? "Hide O&M / yearly charges" : "Add AMC, CMC, insurance & other yearly charges →"}
+                      </button>
+                      {showOM && (
+                        <div className="mt-4 space-y-4">
+                          <OMInput label="AMC — Annual Maintenance" head={f.amc} onChange={(h) => upd({ amc: h })} testId="om-amc" />
+                          <OMInput label="CMC — Comprehensive Maintenance" head={f.cmc} onChange={(h) => upd({ cmc: h })} testId="om-cmc" />
+                          <OMInput label="Insurance" head={f.insurance} onChange={(h) => upd({ insurance: h })} testId="om-insurance" />
+                          <div className="grid sm:grid-cols-[1fr_1.4fr] gap-3 items-end">
+                            <Field label="Other charge name"><TextInput value={f.otherOM.name} onChange={(e) => upd({ otherOM: { ...f.otherOM, name: e.target.value } })} data-testid="om-other-name" /></Field>
+                            <OMInput label={f.otherOM.name || "Other"} head={f.otherOM} onChange={(h) => upd({ otherOM: { ...h, name: f.otherOM.name } })} testId="om-other" />
+                          </div>
+                          <SliderInput label="Annual O&M escalation" value={f.omEscalation} onChange={(v) => upd({ omEscalation: v })} min={0} max={10} step={1} format={(v) => `${v}%`} testId="om-escalation" />
+                          <div className="p-3.5 rounded-lg bg-emerald-500/5 border border-emerald-500/15 text-sm text-slate-300" data-testid="om-readout">
+                            Total year-1 O&M ≈ <span className="num text-emerald-400 font-semibold">{inrCompact(annualOM)}/yr</span> ({inr(annualOM / 12)}/mo). Subtracted from your savings in every metric below.
+                          </div>
+                        </div>
+                      )}
+                    </div>
                     <Disclaimer>Financing figures are indicative and subject to the financing partner's credit assessment, applicable terms and approval.</Disclaimer>
                   </div>
                 )}
@@ -305,20 +415,21 @@ export default function Calculator() {
         </div>
       )}
 
-      {showResults && model && <Results f={f} model={model} capacityKw={capacityKw} fullKw={fullKw} areaNeed={areaNeed} coveragePct={coveragePct} areaLimited={areaLimited} fitKw={fitKw} hasAreaInput={hasAreaInput} irradiation={irradiation} ratePerWatt={ratePerWatt} annualUnits={annualUnits} effectiveTariff={effectiveTariff} monthlyBill={monthlyBill} reportRef={reportRef} onEdit={() => setShowResults(false)} />}
+      {showResults && model && <Results f={f} model={model} capacityKw={capacityKw} fullKw={fullKw} areaNeed={areaNeed} coveragePct={coveragePct} areaLimited={areaLimited} fitKw={fitKw} hasAreaInput={hasAreaInput} irradiation={irradiation} ratePerWatt={ratePerWatt} annualUnits={annualUnits} effectiveTariff={effectiveTariff} monthlyBill={monthlyBill} performanceRatio={performanceRatio} degradationYr={degradationYr} annualOM={annualOM} omEscalation={omEscalationFrac} panelCount={panelCount} perPanelDailyUnits={perPanelDailyUnits} weather={f.useWeather ? weather : null} panelWattage={f.panelWattage} panelTech={f.panelTech} reportRef={reportRef} onEdit={() => setShowResults(false)} />}
     </div>
   );
 }
 
 // ============================ RESULTS ============================
-function Results({ f, model, capacityKw, fullKw, areaNeed, coveragePct, areaLimited, fitKw, hasAreaInput, irradiation, ratePerWatt, annualUnits, effectiveTariff, monthlyBill, reportRef, onEdit }) {
+function Results({ f, model, capacityKw, fullKw, areaNeed, coveragePct, areaLimited, fitKw, hasAreaInput, irradiation, ratePerWatt, annualUnits, effectiveTariff, monthlyBill, performanceRatio, degradationYr, annualOM, omEscalation, panelCount, perPanelDailyUnits, weather, panelWattage, panelTech, reportRef, onEdit }) {
   const [horizon, setHorizon] = useState(25);
   const m = model.metrics;
 
   const baseInputs = {
-    capacityKw, irradiation, performanceRatio: DEFAULTS.performanceRatio, shading: f.shading, ratePerWatt,
+    capacityKw, irradiation, performanceRatio, degradationYr, shading: f.shading, ratePerWatt,
     annualUnits, effectiveTariff, daytimePct: 0.65, tariffEscalation: (Number(f.tariffEscalation) || 5) / 100,
     financingPct: (Number(f.financingPct) || 80) / 100, interestRate: Number(f.interestRate) || 11, tenureYears: Number(f.tenureYears) || 7,
+    annualOMOverride: annualOM, omEscalation,
   };
   const sensitivity = useMemo(() => runSensitivity(baseInputs), [capacityKw, ratePerWatt, effectiveTariff]);
   const tornado = useMemo(() => runTornado(baseInputs), [capacityKw, ratePerWatt, effectiveTariff]);
@@ -351,7 +462,7 @@ function Results({ f, model, capacityKw, fullKw, areaNeed, coveragePct, areaLimi
   const solarCovers = m.annualSavingsY1 / 12;               // value of solar per month
   const residual = m.residualMonthlyBill;                    // still pay grid
   const emi = m.monthlyEMI;                                  // loan EMI
-  const omMonthly = (model.cost.totalCost * DEFAULTS.omPctOfCost) / 12;
+  const omMonthly = m.annualOM / 12;
   const totalWithSolar = residual + emi + omMonthly;
   const netSaving = monthlyBill - totalWithSolar;
   const emiGtSaving = netSaving > 0;
@@ -605,10 +716,12 @@ function Results({ f, model, capacityKw, fullKw, areaNeed, coveragePct, areaLimi
           <h3 className="font-head font-semibold text-lg text-slate-100 mb-4">Assumptions & Sources</h3>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs text-slate-400">
             {[
-              ["Irradiation", `${irradiation} kWh/m²/day (${f.state})`],
-              ["Performance ratio", `${DEFAULTS.performanceRatio} (incl. ${f.shading} shading)`],
-              ["Specific yield", `~${Math.round(specificYieldCalc(irradiation, f.shading))} kWh/kW/yr`],
-              ["Degradation", `~${(DEFAULTS.degradationYr * 100).toFixed(1)}% / yr`],
+              ["Irradiation", `${irradiation} kWh/m²/day (${weather ? "live · " + (weather.location?.label || "site") : f.state})`],
+              ["Performance ratio", `${performanceRatio} (${panelTech}, ${f.shading} shading)`],
+              ["Specific yield", `~${Math.round(specificYieldCalc(irradiation, f.shading, performanceRatio))} kWh/kW/yr`],
+              ["Degradation", `~${(degradationYr * 100).toFixed(2)}% / yr (${panelTech})`],
+              ["Panels", `${num(panelCount)} × ${panelWattage} Wp`],
+              ["Annual O&M", `${inrCompact(annualOM)}/yr @ ${(omEscalation * 100).toFixed(0)}% esc.`],
               ["EPC cost", `₹${ratePerWatt}/W (benchmark)`],
               ["Effective tariff", `₹${effectiveTariff.toFixed(2)}/kWh`],
               ["Tariff escalation", `${f.tariffEscalation}% / yr`],
@@ -628,9 +741,9 @@ function Results({ f, model, capacityKw, fullKw, areaNeed, coveragePct, areaLimi
   );
 }
 
-function specificYieldCalc(irradiation, shading) {
+function specificYieldCalc(irradiation, shading, pr = DEFAULTS.performanceRatio) {
   const loss = SHADE_LOSS[shading] ?? 0.03;
-  return irradiation * 365 * DEFAULTS.performanceRatio * (1 - loss) * DEFAULTS.availability;
+  return irradiation * 365 * pr * (1 - loss) * DEFAULTS.availability;
 }
 
 // ============================ FINANCE DEEP DIVE ============================
