@@ -21,6 +21,10 @@ db = client[os.environ['DB_NAME']]
 app = FastAPI(title="Solar Intelligence Platform API")
 api_router = APIRouter(prefix="/api")
 
+logging.basicConfig(level=logging.INFO,
+                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 # ----------------------------- Models -----------------------------
 def now_iso():
@@ -409,10 +413,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
 
 
 @app.on_event("shutdown")
