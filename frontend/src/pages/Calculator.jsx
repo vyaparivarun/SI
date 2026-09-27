@@ -640,6 +640,7 @@ function FinanceDeepDive({ projectCost, financingPct, interestRate, tenureYears,
   const [flatRate, setFlatRate] = useState(DEFAULTS.flatRate);
   const [feePct, setFeePct] = useState(DEFAULTS.processingFeePct);
   const [leaseRate, setLeaseRate] = useState(DEFAULTS.leaseRate);
+  const [leaseTenure, setLeaseTenure] = useState(5);
   const [showSchedule, setShowSchedule] = useState(false);
   const [showAllMonths, setShowAllMonths] = useState(false);
 
@@ -649,14 +650,16 @@ function FinanceDeepDive({ projectCost, financingPct, interestRate, tenureYears,
   }), [projectCost, financingPct, interestRate, tenureYears, feePct, flatRate]);
 
   const lease = useMemo(() => calculateLease({
-    financeAmount: pkg.loanAmount, leaseRate, tenureYears, gstPct: DEFAULTS.gstOnRentalPct, annualGeneration,
-  }), [pkg.loanAmount, leaseRate, tenureYears, annualGeneration]);
+    financeAmount: pkg.loanAmount, leaseRate, tenureYears: leaseTenure, gstPct: DEFAULTS.gstOnRentalPct, annualGeneration,
+  }), [pkg.loanAmount, leaseRate, leaseTenure, annualGeneration]);
 
   const active = method === "reducing" ? pkg.reducing : pkg.flat;
   const start = new Date();
   const end = new Date(start.getFullYear(), start.getMonth() + pkg.payoffMonths, 1);
   const endLabel = end.toLocaleString("en-IN", { month: "short", year: "numeric" });
   const startLabel = start.toLocaleString("en-IN", { month: "short", year: "numeric" });
+  const leaseEnd = new Date(start.getFullYear(), start.getMonth() + lease.months, 1);
+  const leaseEndLabel = leaseEnd.toLocaleString("en-IN", { month: "short", year: "numeric" });
   const isLoan = structure === "loan";
 
   const fees = [
@@ -709,7 +712,7 @@ function FinanceDeepDive({ projectCost, financingPct, interestRate, tenureYears,
         ) : (
           <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/20 mb-6 flex flex-wrap items-center gap-x-8 gap-y-2">
             <div><div className="text-[10px] uppercase tracking-wider text-amber-500/80 font-mono">Monthly rental</div><div className="num text-2xl font-bold text-amber-400" data-testid="rental-amount">{inr(lease.rentalInclGst)}<span className="text-sm text-slate-500 font-normal">/month</span></div><div className="text-[11px] text-slate-500">{inr(lease.rentalExGst)} + {inr(lease.gst)} GST</div></div>
-            <div className="text-slate-500 text-sm">for <span className="num text-slate-200 font-semibold">{lease.months} rentals</span> — until <span className="text-slate-200 font-semibold">{endLabel}</span>{lease.rentalPerUnit ? <> · <span className="num text-slate-200">₹{lease.rentalPerUnit.toFixed(2)}/unit</span></> : null}</div>
+            <div className="text-slate-500 text-sm">for <span className="num text-slate-200 font-semibold">{lease.months} rentals</span> — until <span className="text-slate-200 font-semibold">{leaseEndLabel}</span>{lease.rentalPerUnit ? <> · <span className="num text-slate-200">₹{lease.rentalPerUnit.toFixed(2)}/unit</span></> : null}</div>
             <Pill tone="emerald">Effective ≈ {pct(leaseRate)} reducing</Pill>
           </div>
         )}
@@ -729,6 +732,7 @@ function FinanceDeepDive({ projectCost, financingPct, interestRate, tenureYears,
               <SliderInput label="Processing fee" value={feePct} onChange={setFeePct} min={0} max={3} step={0.25} format={(v) => `${v}%`} testId="fee-slider" />
               {isLoan && method === "flat" && <SliderInput label="Flat interest rate" value={flatRate} onChange={setFlatRate} min={5} max={13} step={0.25} format={(v) => `${v}%`} testId="flat-slider" />}
               {!isLoan && <SliderInput label="Effective lease rate" value={leaseRate} onChange={setLeaseRate} min={7} max={14} step={0.25} format={(v) => `${v}%`} testId="lease-slider" />}
+              {!isLoan && <SliderInput label="Lease tenure" value={leaseTenure} onChange={setLeaseTenure} min={3} max={7} step={1} format={(v) => `${v} yrs`} testId="lease-tenure-slider" />}
             </div>
           </div>
 
@@ -752,7 +756,7 @@ function FinanceDeepDive({ projectCost, financingPct, interestRate, tenureYears,
                   <Metric label="GST / month (18%)" value={inr(lease.gst)} tone="danger" />
                   <Metric label="Total Rentals (incl GST)" value={inrCompact(lease.totalRentalsInclGst)} />
                   <Metric label="Rental per unit" value={lease.rentalPerUnit ? `₹${lease.rentalPerUnit.toFixed(2)}` : "—"} tone="emerald" sub="₹/kWh generated" />
-                  <Metric label="Ownership transfers" value={endLabel} tone="emerald" sub={`after ${lease.months} rentals`} />
+                  <Metric label="Ownership transfers" value={leaseEndLabel} tone="emerald" sub={`after ${lease.months} rentals`} />
                 </>
               )}
             </div>
@@ -882,7 +886,7 @@ function FinanceDeepDive({ projectCost, financingPct, interestRate, tenureYears,
                   </table>
                 </div>
               )}
-              <p className="text-[11px] text-slate-500 mt-2">{isLoan ? `Reducing-balance schedule — early EMIs are interest-heavy; loan closes ${endLabel}.` : `Level monthly rental (+GST) for ${lease.months} months; ownership transfers ${endLabel}.`}</p>
+              <p className="text-[11px] text-slate-500 mt-2">{isLoan ? `Reducing-balance schedule — early EMIs are interest-heavy; loan closes ${endLabel}.` : `Level monthly rental (+GST) for ${lease.months} months; ownership transfers ${leaseEndLabel}.`}</p>
             </div>
           )}
         </div>
