@@ -117,13 +117,25 @@ export default function Calculator() {
     if (!f.pincode && !f.city) { toast.error("Enter a pincode or city first"); return; }
     setWeatherLoading(true); setWeatherError("");
     try {
-      const params = f.pincode ? { pincode: f.pincode } : { city: f.city, state: f.state };
+      const params = f.pincode ? { pincode: f.pincode, state: f.state } : { city: f.city, state: f.state };
       const data = await getSolarResource(params);
-      setWeather(data); upd({ useWeather: true });
+      setWeather({ ...data, fallback: false });
+      upd({ useWeather: true });
       toast.success(`Live solar data loaded for ${data.location?.label || "your area"}`);
     } catch (e) {
-      const msg = e?.response?.data?.detail || "Could not fetch live solar data — using state average.";
-      setWeatherError(msg); toast.error(msg);
+      // Graceful fallback: use the state-average irradiation from our database.
+      if (stateObj?.irradiation) {
+        setWeather({
+          avgDailyGHI: stateObj.irradiation, sunnyDays: null, avgSunshineHours: null,
+          fallback: true, sources: [{ name: `${f.state} state average (SolarIntelligence DB)`, avgDailyGHI: stateObj.irradiation }],
+          location: { label: `${f.state} — state average` }, method: "Exact-location data unavailable",
+        });
+        upd({ useWeather: true });
+        toast.message(`Exact-location data unavailable — using ${f.state} state average (${stateObj.irradiation} kWh/m²/day).`);
+      } else {
+        const msg = e?.response?.data?.detail || "Could not fetch live solar data — pick your state to use its average.";
+        setWeatherError(msg); toast.error(msg);
+      }
     } finally { setWeatherLoading(false); }
   };
 
@@ -242,15 +254,33 @@ export default function Calculator() {
                       {weather && (
                         <div className="mt-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20" data-testid="weather-result">
                           <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-                            <div className="text-xs text-slate-300">{weather.location?.label}</div>
-                            <Segmented options={[{ value: true, label: "Use live data" }, { value: false, label: "State average" }]} value={f.useWeather} onChange={(v) => upd({ useWeather: v })} testId="weather-toggle" />
+                            <div className="text-xs text-slate-300 flex items-center gap-2">
+                              {weather.location?.label}
+                              {weather.fallback && <span className="px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 text-[10px] font-mono">STATE AVG</span>}
+                            </div>
+                            <Segmented options={[{ value: true, label: "Use this data" }, { value: false, label: "State average" }]} value={f.useWeather} onChange={(v) => upd({ useWeather: v })} testId="weather-toggle" />
                           </div>
                           <div className="grid grid-cols-3 gap-3 text-center">
-                            <div><div className="num text-xl font-bold text-amber-400">{weather.sunnyDays}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Sunny days / yr</div></div>
-                            <div><div className="num text-xl font-bold text-emerald-400">{weather.avgDailyGHI}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">kWh/m²/day</div></div>
-                            <div><div className="num text-xl font-bold text-blue-400">{weather.avgSunshineHours}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Sun hrs / day</div></div>
+                            <div><div className="num text-xl font-bold text-emerald-400">{weather.avgDailyGHI}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">kWh/m²/day (peak sun hrs)</div></div>
+                            <div><div className="num text-xl font-bold text-amber-400">{weather.sunnyDays ?? "—"}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Sunny days / yr</div></div>
+                            <div><div className="num text-xl font-bold text-blue-400">{weather.avgSunshineHours ?? "—"}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Sun hrs / day</div></div>
                           </div>
-                          <div className="text-[10px] text-slate-600 mt-3">Based on {weather.totalDaysAnalyzed} days ({weather.periodStart} → {weather.periodEnd}). A day counts as "sunny" at ≥{weather.sunnyDayThresholdHours}h sunshine. Source: Open-Meteo (ERA5).</div>
+                          {weather.sources?.length > 0 && (
+                            <div className="mt-3 pt-3 border-t border-white/10">
+                              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">Cross-checked across {weather.sources.length} source{weather.sources.length > 1 ? "s" : ""} · {weather.method}</div>
+                              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                {weather.sources.map((s) => (
+                                  <span key={s.name} className="text-[11px] text-slate-400">{s.name}: <span className="num text-slate-200 font-semibold">{s.avgDailyGHI}</span></span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {!weather.fallback && weather.periodStart && (
+                            <div className="text-[10px] text-slate-600 mt-3">Sunny day = mean cloud cover &lt; {weather.sunnyDayMaxCloudPct}% (Open-Meteo, {weather.periodStart} → {weather.periodEnd}). Sources: Open-Meteo ERA5, NASA POWER, PVGIS.</div>
+                          )}
+                          {weather.fallback && (
+                            <div className="text-[10px] text-slate-600 mt-3">Exact-location satellite data wasn't available for this pincode/city, so we're using your state's average irradiation from our database.</div>
+                          )}
                         </div>
                       )}
                     </div>
