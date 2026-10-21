@@ -1,0 +1,42 @@
+{
+  "summary": "Deep test of live pincode -> India Post location -> 5-source GHI consensus (/api/solar/resource), resilience (monkeypatched unit tests with in-memory fake DB), and calculator Step-1 solar/DISCOM UX plus DISCOM/States/State-detail/Government pages. All 9 requested pincodes resolve to correct state/district with verifiedBy India Post, 5/5 sources, plausible GHI (4.79-5.5) and numeric sunny days (201010 -> 192, no longer '—'). Extra spot checks 396210 Daman, 403722 Goa, 160017 Chandigarh, 605001 Puducherry, 737101 Sikkim, 190001 Srinagar, 500081 Hyderabad, 302001 Jaipur all correct. Validation 422/404 paths correct, no 500s. Fallback chain (partial source failures, outliers, out-of-range, stale cache, geocoder failover, district fallback, state mismatch rejection, all-down -> state_only / 503) verified at unit level. Frontend flows all pass; UI never broke under mocked state_only / 503 / network-abort responses. Found 1 data-trust bug (city not replaced on state switch) and a few minor trust/copy issues.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/solar/resource?pincode=110020", "issue": "Zippopotam fallback used (Nominatim/Photon miss) gives 28.6488,77.1726 (central Delhi) for South Delhi PIN 110020 (~14 km off), yet precision is labelled 'pincode' / 'Exact pincode location'. Geocoder results are only state-checked, not district-checked. Impact on GHI is negligible but the label overstates precision."},
+      {"endpoint": "solar_service._state_ok", "issue": "If a geocoder returns a state string that canon_state() can't map, it is accepted (returns True) instead of being treated as unknown — low risk, but weakens the state-mismatch guard."},
+      {"endpoint": "solar_service._src_nasa_clim", "issue": "period shows plain 'Long-term climatology' — NASA header start/end not present in response, so the years are never displayed."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "Calculator applyLocation (force switch)", "issue": "State-mismatch 'Switch to Uttar Pradesh' keeps the previously typed City (e.g. 'Jaipur') because patch uses `city: f.city || loc.district`. Result: State=Uttar Pradesh, City=Jaipur, DISCOM=PVVNL — report header shows 'Jaipur, Uttar Pradesh'. When force=true (or when state changes) city should be replaced by loc.district.", "selector": "[data-testid=weather-switch-state-btn]", "priority": "MEDIUM"},
+      {"component": "Calculator tariff for unverified DISCOMs", "issue": "Selecting an unverified DISCOM does not overwrite tariff (as designed) but leaves the previous value in the field: after UGVCL->Torrent the field still shows UGVCL's ₹6.9; for Goa it shows the generic default ₹8. User can continue with a number that looks sourced. Consider clearing tariff (forcing entry) or labelling it 'placeholder/previous DISCOM' when the selected DISCOM has ciTariff=null.", "selector": "[data-testid=calc-tariff]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Calculator Step 1 notes", "issues": ["Torrent unverified note repeats itself: '...enter the average rate from your bill. Enter the average rate from your bill (total bill ÷ units) in the next step.'", "503 error text duplicates the fallback message: 'The calculator will use your state's average. The calculator is using the Uttar Pradesh state average ... meanwhile.'"]},
+      {"screen": "/discoms", "issues": ["15 unverified DISCOM cards (Goa, Chandigarh, Puducherry, J&K, Ladakh, DNH, A&N, NE states) have no source link (sourceUrl ''), so [discom-source-link-<id>] is missing for them — 54 links rendered. Add the JERC/SERC URL."]},
+      {"screen": "Results hero", "issues": ["'Solar covers ₹5,79,740' is larger than 'Current bill ₹5,00,000' (BESCOM 560058, ₹5L bill; same for Goa ₹3L -> ₹3,47,561). Net saving math is consistent, but showing solar 'covering' more than the bill is confusing to customers — clarify (e.g. includes exported/escalated value) or cap the displayed figure."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_solar_resource.py", "/app/backend/tests/test_solar_service_unit.py", "/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix applyLocation: when force-switching state (weather-switch-state-btn) replace city with loc.district (also consider when f.state was a different state).",
+    "For DISCOMs with ciTariff=null, don't silently keep the previous DISCOM's tariff / default 8 — clear the field or mark it clearly as not verified.",
+    "Optional: add a district-consistency check (or downgrade precision label) for Zippopotam-only results; add source URLs to unverified DISCOMs; dedupe repeated copy in Torrent note and 503 message; clarify 'Solar covers' > bill in results hero."
+  ],
+  "critical_code_review_comments": [
+    "Calculator.jsx is 1086 lines — split Step components / Results into modules.",
+    "fetchWeather -> applyLocation reads `f` from the render closure after an await; if the user edits state/city during the fetch, stale values can be written back. Use functional setF.",
+    "solar_service: good structure — retries only on 429/5xx, per-source 40s wait_for, geo_cache 90d, solar_cache v3 14d fresh/365d stale, never-500 catch in server.py. Confirmed via unit tests.",
+    "get_solar does not cache results with sourcesUsed<2 (returned live with low confidence) — fine, but repeated calls for such spots will re-hit all 5 APIs every time."
+  ],
+  "updated_files": ["/app/backend/tests/test_solar_resource.py (rewritten for V3 schema)", "/app/backend/tests/test_solar_service_unit.py (new)", "/app/backend/tests/backend_test.py (ID prefixes EFL- -> SI- to match current server)"],
+  "success_rate": {"backend": "100% (53/53 pytest incl. 17 unit resilience tests)", "frontend": "~95% (all requested flows pass; 1 medium data bug, minor trust/copy issues)"},
+  "seed_data_creation": "None. TEST_ leads/EPC partners/projects created by backend_test.py were deleted (18/6/6). geo_cache/solar_cache populated by real lookups (intended caches).",
+  "retest_needed": true,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "pytest.ini forces xdist (-n 2); for serial use `-n 0` not `-p no:xdist`. Unit tests in test_solar_service_unit.py monkeypatch solar_service.SOURCES/_india_post/_nominatim_pin/etc. with a FakeDB (no Mongo). Toggle testids: weather-toggle-true / weather-toggle-false. Step tabs: step-tab-1..4. Live Estimate panel has no data-testids (read via text 'Live Estimate'). UI fallback states verified by page.route mocking of /api/solar/resource.",
+  "rca of the issue": "City mismatch: Calculator.jsx applyLocation builds patch `{ state: loc.state, city: f.city || loc.district }`, so an existing city from a different state survives the forced state switch. Repro: /calculator -> State Maharashtra, City Jaipur (or any) -> pincode 201010 -> Get live solar data -> Switch to Uttar Pradesh -> City remains 'Jaipur'. Mitigation: `city: (force || f.state !== loc.state || !f.city) ? (loc.district || f.city) : f.city`."
+}

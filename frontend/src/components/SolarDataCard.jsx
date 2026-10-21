@@ -5,6 +5,7 @@ import { MapPin, ShieldCheck, AlertTriangle, XCircle, CheckCircle2, Info, Satell
 const PRECISION = {
   pincode: "Exact pincode location",
   district: "District centre (pincode area not mapped)",
+  approximate: "Approximate pincode location",
   city: "City centre",
   coordinates: "Exact coordinates",
   state: "State only",

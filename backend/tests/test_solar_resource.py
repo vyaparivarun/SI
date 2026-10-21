@@ -1,100 +1,139 @@
-"""Tests for /api/solar/resource endpoint (multi-source median: Open-Meteo + NASA POWER + PVGIS)."""
+"""API tests for GET /api/solar/resource (V3 schema: India Post verified location + 5-source GHI consensus)."""
 import os
-import statistics
+import time
+from pathlib import Path
+
 import pytest
 import requests
-from pathlib import Path
 
 
 def _load_base():
     url = os.environ.get("REACT_APP_BACKEND_URL", "").rstrip("/")
     if url:
         return url
-    env = Path("/app/frontend/.env").read_text()
-    for line in env.splitlines():
+    for line in Path("/app/frontend/.env").read_text().splitlines():
         if line.startswith("REACT_APP_BACKEND_URL="):
             return line.split("=", 1)[1].strip().rstrip("/")
-    return ""
+    raise RuntimeError("REACT_APP_BACKEND_URL missing")
 
 
-BASE_URL = _load_base()
-API = f"{BASE_URL}/api"
+API = f"{_load_base()}/api/solar/resource"
+SOURCE_IDS = {"gsa", "nasa_clim", "pvgis", "om_era5", "nasa_daily"}
 
 
 @pytest.fixture(scope="module")
-def client():
-    s = requests.Session()
-    s.headers.update({"Content-Type": "application/json"})
-    return s
+def s():
+    return requests.Session()
 
 
-REQUIRED_FIELDS = {"avgDailyGHI", "sources", "method", "location"}
+# ---- Pincode -> correct state/district + full schema ----
+PINS = [
+    ("201010", "Uttar Pradesh", "Ghaziabad"),
+    ("400070", "Maharashtra", "Mumbai"),
+    ("560058", "Karnataka", "Bangalore"),
+    ("380015", "Gujarat", "Ahmedabad"),
+    ("122002", "Haryana", "Gurgaon"),
+    ("110020", "Delhi (NCT)", None),
+    ("682001", "Kerala", "Ernakulam"),
+    ("744101", "Andaman & Nicobar", "South Andaman"),
+    ("194101", "Ladakh", None),
+]
 
 
-def _validate(data):
-    missing = REQUIRED_FIELDS - set(data.keys())
-    assert not missing, f"Missing fields: {missing}. Got: {list(data.keys())}"
-    assert isinstance(data["avgDailyGHI"], (int, float)) and data["avgDailyGHI"] > 0
-    assert isinstance(data["sources"], list) and len(data["sources"]) >= 1
-    for src in data["sources"]:
-        assert "name" in src and "avgDailyGHI" in src
-        assert isinstance(src["avgDailyGHI"], (int, float)) and src["avgDailyGHI"] > 0
-    assert "Median of" in data["method"]
-    # verify median matches
-    ghis = [s["avgDailyGHI"] for s in data["sources"]]
-    expected = round(statistics.median(ghis), 2)
-    assert abs(data["avgDailyGHI"] - expected) < 0.02, \
-        f"avgDailyGHI {data['avgDailyGHI']} != median {expected} of {ghis}"
+@pytest.mark.parametrize("pin,state,district", PINS)
+def test_pincode_resolves(s, pin, state, district):
+    r = s.get(API, params={"pincode": pin}, timeout=150)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    loc = d["location"]
+    assert loc["pincode"] == pin
+    assert loc["state"] == state, loc
+    if district:
+        assert district.lower() in (loc["district"] or "").lower(), loc
+    assert loc["verifiedBy"] == "India Post"
+    for k in ("districts", "postOffices", "label", "precision"):
+        assert k in loc
+    assert isinstance(loc["districts"], list) and loc["districts"]
+    assert d["status"] in {"live", "cached", "stale"}, d
+    assert loc["lat"] is not None and loc["lon"] is not None and loc.get("geocoder")
+    assert 3.5 <= d["avgDailyGHI"] <= 6.5, d["avgDailyGHI"]
+    assert abs(d["annualGHI"] - round(d["avgDailyGHI"] * 365)) <= 1
+    assert d["confidence"] in {"high", "medium", "low"}
+    assert isinstance(d["spreadPct"], (int, float))
+    assert d["sourcesTried"] == 5
+    assert 1 <= d["sourcesUsed"] <= 5
+    ids = {x["id"] for x in d["sources"]}
+    assert ids == SOURCE_IDS
+    for x in d["sources"]:
+        for k in ("id", "name", "period", "avgDailyGHI", "used", "ok", "note"):
+            assert k in x
+    assert sum(1 for x in d["sources"] if x["used"]) == d["sourcesUsed"]
+    assert d["monthlyGHI"] is None or len(d["monthlyGHI"]) == 12
+    assert "sunnyDays" in d and "sunnyDaysRange" in d and "fetchedAt" in d
+    print(pin, loc["label"], loc["precision"], loc["geocoder"], d["avgDailyGHI"], d["confidence"],
+          d["sourcesUsed"], d["sunnyDays"], d["status"])
 
 
-class TestSolarResource:
-    def test_no_params_returns_400(self, client):
-        r = client.get(f"{API}/solar/resource", timeout=30)
-        assert r.status_code == 400
-        assert "detail" in r.json()
+def test_201010_sunny_days_numeric(s):
+    d = s.get(API, params={"pincode": "201010"}, timeout=150).json()
+    assert isinstance(d["sunnyDays"], int) and 100 < d["sunnyDays"] < 365
+    assert d["location"]["precision"] in {"pincode", "district"}
 
-    def test_city_mumbai(self, client):
-        r = client.get(f"{API}/solar/resource",
-                       params={"city": "Mumbai", "state": "Maharashtra"}, timeout=60)
-        assert r.status_code == 200, r.text
-        data = r.json()
-        _validate(data)
-        assert len(data["sources"]) >= 2, f"Expected 2-3 sources, got {len(data['sources'])}"
-        # Sunny days for Mumbai should be realistic (~150-260), NOT ~354
-        if data.get("sunnyDays") is not None:
-            assert 100 <= data["sunnyDays"] <= 300, \
-                f"sunnyDays {data['sunnyDays']} unrealistic for Mumbai"
-        # GHI in reasonable range for India
-        assert 3.5 <= data["avgDailyGHI"] <= 7.0
-        print(f"Mumbai: GHI={data['avgDailyGHI']}, sunnyDays={data.get('sunnyDays')}, "
-              f"sources={[(s['name'], s['avgDailyGHI']) for s in data['sources']]}")
 
-    def test_pincode_jaipur(self, client):
-        r = client.get(f"{API}/solar/resource",
-                       params={"pincode": "302001"}, timeout=60)
-        assert r.status_code == 200, r.text
-        data = r.json()
-        _validate(data)
-        assert len(data["sources"]) >= 2
-        # Jaipur consensus should be around 5.3-5.5
-        assert 4.5 <= data["avgDailyGHI"] <= 6.2, \
-            f"Jaipur GHI {data['avgDailyGHI']} outside expected 4.5-6.2"
-        if data.get("sunnyDays") is not None:
-            assert 150 <= data["sunnyDays"] <= 300, \
-                f"Jaipur sunnyDays {data['sunnyDays']} out of realistic band"
-        print(f"Jaipur: GHI={data['avgDailyGHI']}, sunnyDays={data.get('sunnyDays')}, "
-              f"sources={[(s['name'], s['avgDailyGHI']) for s in data['sources']]}")
+def test_second_call_cached(s):
+    s.get(API, params={"pincode": "560058"}, timeout=150)
+    t = time.time()
+    d = s.get(API, params={"pincode": "560058"}, timeout=60).json()
+    assert d["status"] == "cached"
+    assert time.time() - t < 10
 
-    def test_invalid_pincode_returns_404_state_avg(self, client):
-        r = client.get(f"{API}/solar/resource",
-                       params={"pincode": "999999", "state": "Rajasthan"}, timeout=30)
-        assert r.status_code == 404
-        detail = r.json().get("detail", "").lower()
-        assert "state average" in detail or "could not resolve" in detail, \
-            f"Expected state-average fallback message, got: {detail}"
 
-    def test_latlon_direct(self, client):
-        r = client.get(f"{API}/solar/resource",
-                       params={"lat": 12.97, "lon": 77.59}, timeout=60)
-        assert r.status_code == 200, r.text
-        _validate(r.json())
+# ---- Validation & errors ----
+@pytest.mark.parametrize("pin", ["12345", "abcdef", "012345", "1234567"])
+def test_invalid_pincode_422(s, pin):
+    r = s.get(API, params={"pincode": pin}, timeout=30)
+    assert r.status_code == 422
+    assert "6-digit" in r.json()["detail"]
+
+
+def test_nonexistent_pincode_404(s):
+    r = s.get(API, params={"pincode": "999999"}, timeout=60)
+    assert r.status_code == 404, r.text
+    assert "not found in India Post records" in r.json()["detail"]
+
+
+def test_no_params_422(s):
+    r = s.get(API, timeout=30)
+    assert r.status_code == 422
+    assert isinstance(r.json()["detail"], str)
+
+
+def test_coords_outside_india_422(s):
+    r = s.get(API, params={"lat": 51.5, "lon": -0.1}, timeout=30)
+    assert r.status_code == 422
+    assert "outside India" in r.json()["detail"]
+
+
+def test_coords_non_numeric_422(s):
+    r = s.get(API, params={"lat": "abc", "lon": "77"}, timeout=30)
+    assert r.status_code == 422
+
+
+def test_city_state(s):
+    r = s.get(API, params={"city": "Jaipur", "state": "Rajasthan"}, timeout=150)
+    assert r.status_code == 200, r.text
+    d = r.json()
+    assert d["location"]["precision"] == "city"
+    assert d["location"]["state"] == "Rajasthan"
+    assert 4.5 <= d["avgDailyGHI"] <= 6.5
+
+
+def test_city_unknown_no_500(s):
+    r = s.get(API, params={"city": "Qwzxqwzx"}, timeout=60)
+    assert r.status_code in (404, 422), r.text
+
+
+def test_coords_in_india(s):
+    r = s.get(API, params={"lat": 26.9, "lon": 75.8}, timeout=150)
+    assert r.status_code == 200
+    assert r.json()["location"]["precision"] == "coordinates"

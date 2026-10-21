@@ -141,9 +141,10 @@ export function calculateElectricitySavings({
     const surplus = Math.max(0, gen - consumableGen);
     const offsetSavings = consumableGen * tariff;
     const exportSavings = surplus * tariff * exportCompensation;
-    const annualSaving = offsetSavings + exportSavings;
-    cumulative += annualSaving;
     const gridBillBefore = annualUnits * tariff;
+    // Net-metering credits can at most wipe out the energy bill; they never pay out more than it.
+    const annualSaving = Math.min(offsetSavings + exportSavings, gridBillBefore);
+    cumulative += annualSaving;
     const gridBillAfter = Math.max(0, gridBillBefore - annualSaving);
     rows.push({
       year: y, tariff, generation: gen, offsetUnits: consumableGen, surplus,

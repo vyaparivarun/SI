@@ -119,21 +119,22 @@ export default function Calculator() {
 
   const pickDiscom = (name) => {
     const d = getDiscomByName(name);
-    upd({ discom: name, ...(typeof d?.ciTariff === "number" ? { tariff: d.ciTariff } : {}) });
+    // Unverified DISCOM -> clear the tariff so the customer enters the rate from their own bill.
+    upd({ discom: name, tariff: typeof d?.ciTariff === "number" ? d.ciTariff : "" });
   };
 
   // Fill state / city / DISCOM from a verified pincode location (never overrides a different chosen state unless asked).
   const applyLocation = (loc, force = false) => {
     if (!loc?.state || !getStateByName(loc.state)) return;
     if (!force && f.state && f.state !== loc.state) return;
-    const patch = { state: loc.state, city: f.city || loc.district || "" };
-    const keepDiscom = f.state === loc.state && f.discom;
-    if (!keepDiscom) {
+    const sameState = f.state === loc.state;
+    const patch = { state: loc.state, city: (sameState && f.city) || loc.district || f.city || "" };
+    if (!(sameState && f.discom)) {
       patch.discom = "";
       const sug = suggestDiscoms(loc.state, loc.districts || []);
       if (sug.length === 1) {
         patch.discom = sug[0].name;
-        if (typeof sug[0].ciTariff === "number") patch.tariff = sug[0].ciTariff;
+        patch.tariff = typeof sug[0].ciTariff === "number" ? sug[0].ciTariff : "";
       }
     }
     upd(patch);

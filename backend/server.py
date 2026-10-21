@@ -279,7 +279,7 @@ async def solar_resource(
         raise HTTPException(status_code=e.status, detail=e.message)
     except Exception as e:
         logger.exception(f"solar_resource failed: {e!r}")
-        raise HTTPException(status_code=503, detail="Live solar data is temporarily unavailable. The calculator will use your state's average.")
+        raise HTTPException(status_code=503, detail="Live solar data is temporarily unavailable. Please try again in a minute.")
 
 
 app.include_router(api_router)

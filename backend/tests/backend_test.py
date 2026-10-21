@@ -41,7 +41,7 @@ class TestLeads:
         r = client.post(f"{API}/leads", json=payload)
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data["leadId"].startswith("EFL-LEAD-")
+        assert data["leadId"].startswith("SI-LEAD-")
         assert data["intent"] == "HIGH"
         assert isinstance(data["score"], int)
         assert data["score"] >= 60
@@ -89,7 +89,7 @@ class TestEPC:
         else:
             pytest.epc_minimal_ok = True
             data = r.json()
-        assert data["epcId"].startswith("EFL-EPC-")
+        assert data["epcId"].startswith("SI-EPC-")
         pytest.epc_id = data["epcId"]
 
     def test_list_partners(self, client):
@@ -109,7 +109,7 @@ class TestEPC:
         r = client.post(f"{API}/epc/projects", json=payload)
         assert r.status_code == 200, r.text
         data = r.json()
-        assert data["projectId"].startswith("EFL-PRJ-")
+        assert data["projectId"].startswith("SI-PRJ-")
         assert data["stage"] == "Submitted"
         assert isinstance(data["stages"], list) and len(data["stages"]) >= 5
         assert data["intent"] in ("HIGH", "MEDIUM", "LOW")

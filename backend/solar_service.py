@@ -112,8 +112,6 @@ def _state_ok(cand_state, expect):
     if not expect or not cand_state:
         return True
     cs = canon_state(cand_state)
-    if not cs:
-        return True
     return cs == expect or (expect == "Ladakh" and cs == "Jammu & Kashmir")
 
 
@@ -166,7 +164,7 @@ async def _zippopotam(pin):
         return None
     p = places[0]
     return {"lat": float(p["latitude"]), "lon": float(p["longitude"]), "state": p.get("state"),
-            "district": None, "geocoder": "Zippopotam.us", "precision": "pincode"}
+            "district": None, "geocoder": "Zippopotam.us", "precision": "approximate"}
 
 
 async def _openmeteo_place(name, expect_state, precision):
@@ -220,17 +218,19 @@ async def resolve_pincode(db, pin: str) -> dict:
         logger.info(f"India Post lookup failed for {pin}: {e!r}")
 
     expect = post.get("state") if post and post.get("found") else None
-    coords = await _first_valid([(_nominatim_pin, (pin,)), (_photon_pin, (pin,)), (_zippopotam, (pin,))], expect)
-
-    if post is not None and not post.get("found") and not coords:
-        raise SolarError(404, f"Pincode {pin} was not found in India Post records. Please check the number.")
-
+    # Order = most precise first; Zippopotam's India coordinates are coarse, so it is the last resort.
+    coords = await _first_valid([(_nominatim_pin, (pin,)), (_photon_pin, (pin,))], expect)
     if not coords and post and post.get("found"):
         calls = []
         for dist in post["districts"][:2]:
             calls += [(_openmeteo_place, (dist, expect, "district")),
                       (_photon_place, (f"{dist}, {expect}", expect, "district"))]
         coords = await _first_valid(calls, expect)
+    if not coords:
+        coords = await _first_valid([(_zippopotam, (pin,))], expect)
+
+    if post is not None and not post.get("found") and not coords:
+        raise SolarError(404, f"Pincode {pin} was not found in India Post records. Please check the number.")
 
     state = expect or canon_state((coords or {}).get("state"))
     district = (post or {}).get("district") or (coords or {}).get("district")
@@ -308,8 +308,8 @@ async def _src_nasa_clim(lat, lon):
     if ann is None or ann < 0:
         return None
     mon = [p.get(k) for k in MONTHS]
-    hdr = d.get("header") or {}
-    period = f"Long-term climatology ({hdr['start']}–{hdr['end']})" if hdr.get("start") and hdr.get("end") else "Long-term climatology"
+    rng = re.search(r"\(([^)]+)\)", (d.get("header") or {}).get("range") or "")
+    period = f"Long-term climatology ({rng.group(1)})" if rng else "Long-term climatology"
     return {"avgDailyGHI": float(ann), "monthly": mon if all(v is not None and v >= 0 for v in mon) else None,
             "period": period}
 
