@@ -45,9 +45,9 @@ export const DEFAULTS = {
 
 // CERC RCO Buyout Price schedule (source-tagged)
 export const REC_PRICE_SCHEDULE = {
-  source: "CERC Order dated 18 Feb 2026 (Petition No. 12/SM/2025) — RCO Buyout Price",
-  lastVerified: "2026-06",
-  note: "There is no separate solar/non-solar floor or forbearance price since the 2022 REC Regulations; market prices are discovered on power exchanges (recently ~₹345–349/REC).",
+  source: "CERC Suo-Motu Order dated 18-Feb-2026 (Petition No. 12/SM/2025) — RCO Buyout Price",
+  lastVerified: "2026-10-21",
+  note: "There is no separate solar/non-solar floor or forbearance price since the 2022 REC Regulations; market prices are discovered on power exchanges (IEX cleared ₹338/REC on 14-Oct-2026; ≈₹333–370 through 2026).",
   schedule: [
     { fy: "2024-25", pricePerMwh: 347 },
     { fy: "2025-26", pricePerMwh: 347 },

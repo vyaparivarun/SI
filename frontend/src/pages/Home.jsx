@@ -7,6 +7,7 @@ import {
 import { Section, Eyebrow, Card, Metric, Btn, Pill, Disclaimer } from "@/components/ui-kit";
 import { DEMO_CUSTOMER } from "@/data/content";
 import { STATES } from "@/data/states";
+import { stateTariffRange } from "@/data/discoms";
 import { inrCompact, kw, kwh, num } from "@/lib/format";
 import { runProjectModel, recommendSystemSize } from "@/lib/engine";
 import { DEFAULTS, rateForCapacity } from "@/data/config";
@@ -195,7 +196,7 @@ export default function Home() {
                 <span className="num text-[10px] text-slate-500">{s.code}</span>
               </div>
               <div className="num text-2xl font-bold text-amber-400 mt-3">{num(s.installedMw)} <span className="text-sm text-slate-500">MW</span></div>
-              <div className="text-[11px] text-slate-500 mt-1">Irradiation {s.irradiation} kWh/m²/day · C&I ₹{s.ciTariffLow}–{s.ciTariffHigh}/kWh</div>
+              <div className="text-[11px] text-slate-500 mt-1">Irradiation {s.irradiation} kWh/m²/day · HT {stateTariffRange(s.name) || "tariff: check bill"}</div>
             </Link>
           ))}
         </div>

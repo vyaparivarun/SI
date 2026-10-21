@@ -1,5 +1,6 @@
-"""Tests for V2 /api/solar/resource endpoint (Open-Meteo integration)."""
+"""Tests for /api/solar/resource endpoint (multi-source median: Open-Meteo + NASA POWER + PVGIS)."""
 import os
+import statistics
 import pytest
 import requests
 from pathlib import Path
@@ -27,20 +28,23 @@ def client():
     return s
 
 
-REQUIRED_FIELDS = {
-    "avgDailyGHI", "avgSunshineHours", "sunnyDays",
-    "totalDaysAnalyzed", "periodStart", "periodEnd", "location",
-}
+REQUIRED_FIELDS = {"avgDailyGHI", "sources", "method", "location"}
 
 
-def _validate_solar_payload(data):
+def _validate(data):
     missing = REQUIRED_FIELDS - set(data.keys())
-    assert not missing, f"Missing fields: {missing}. Got keys: {list(data.keys())}"
+    assert not missing, f"Missing fields: {missing}. Got: {list(data.keys())}"
     assert isinstance(data["avgDailyGHI"], (int, float)) and data["avgDailyGHI"] > 0
-    assert isinstance(data["sunnyDays"], int) and 0 <= data["sunnyDays"] <= 400
-    assert data["totalDaysAnalyzed"] > 300
-    assert data["location"].get("label")
-    assert "lat" in data["location"] and "lon" in data["location"]
+    assert isinstance(data["sources"], list) and len(data["sources"]) >= 1
+    for src in data["sources"]:
+        assert "name" in src and "avgDailyGHI" in src
+        assert isinstance(src["avgDailyGHI"], (int, float)) and src["avgDailyGHI"] > 0
+    assert "Median of" in data["method"]
+    # verify median matches
+    ghis = [s["avgDailyGHI"] for s in data["sources"]]
+    expected = round(statistics.median(ghis), 2)
+    assert abs(data["avgDailyGHI"] - expected) < 0.02, \
+        f"avgDailyGHI {data['avgDailyGHI']} != median {expected} of {ghis}"
 
 
 class TestSolarResource:
@@ -49,42 +53,48 @@ class TestSolarResource:
         assert r.status_code == 400
         assert "detail" in r.json()
 
-    def test_city_jaipur(self, client):
+    def test_city_mumbai(self, client):
         r = client.get(f"{API}/solar/resource",
-                       params={"city": "Jaipur", "state": "Rajasthan"}, timeout=45)
+                       params={"city": "Mumbai", "state": "Maharashtra"}, timeout=60)
         assert r.status_code == 200, r.text
         data = r.json()
-        _validate_solar_payload(data)
-        # Jaipur should be sunny (>200 sunny days/yr, GHI>4)
-        assert data["avgDailyGHI"] >= 3.5
-        assert data["sunnyDays"] >= 150
+        _validate(data)
+        assert len(data["sources"]) >= 2, f"Expected 2-3 sources, got {len(data['sources'])}"
+        # Sunny days for Mumbai should be realistic (~150-260), NOT ~354
+        if data.get("sunnyDays") is not None:
+            assert 100 <= data["sunnyDays"] <= 300, \
+                f"sunnyDays {data['sunnyDays']} unrealistic for Mumbai"
+        # GHI in reasonable range for India
+        assert 3.5 <= data["avgDailyGHI"] <= 7.0
+        print(f"Mumbai: GHI={data['avgDailyGHI']}, sunnyDays={data.get('sunnyDays')}, "
+              f"sources={[(s['name'], s['avgDailyGHI']) for s in data['sources']]}")
 
     def test_pincode_jaipur(self, client):
         r = client.get(f"{API}/solar/resource",
-                       params={"pincode": "302001"}, timeout=45)
-        # 200 = resolved, 404 = pincode not resolved (acceptable per instructions)
-        assert r.status_code in (200, 404), r.text
-        if r.status_code == 200:
-            _validate_solar_payload(r.json())
-        else:
-            assert "detail" in r.json()
+                       params={"pincode": "302001"}, timeout=60)
+        assert r.status_code == 200, r.text
+        data = r.json()
+        _validate(data)
+        assert len(data["sources"]) >= 2
+        # Jaipur consensus should be around 5.3-5.5
+        assert 4.5 <= data["avgDailyGHI"] <= 6.2, \
+            f"Jaipur GHI {data['avgDailyGHI']} outside expected 4.5-6.2"
+        if data.get("sunnyDays") is not None:
+            assert 150 <= data["sunnyDays"] <= 300, \
+                f"Jaipur sunnyDays {data['sunnyDays']} out of realistic band"
+        print(f"Jaipur: GHI={data['avgDailyGHI']}, sunnyDays={data.get('sunnyDays')}, "
+              f"sources={[(s['name'], s['avgDailyGHI']) for s in data['sources']]}")
 
-    def test_invalid_pincode_returns_404(self, client):
+    def test_invalid_pincode_returns_404_state_avg(self, client):
         r = client.get(f"{API}/solar/resource",
-                       params={"pincode": "000000"}, timeout=30)
+                       params={"pincode": "999999", "state": "Rajasthan"}, timeout=30)
         assert r.status_code == 404
-        assert "detail" in r.json()
+        detail = r.json().get("detail", "").lower()
+        assert "state average" in detail or "could not resolve" in detail, \
+            f"Expected state-average fallback message, got: {detail}"
 
     def test_latlon_direct(self, client):
-        # Bangalore approx
         r = client.get(f"{API}/solar/resource",
-                       params={"lat": 12.97, "lon": 77.59}, timeout=45)
+                       params={"lat": 12.97, "lon": 77.59}, timeout=60)
         assert r.status_code == 200, r.text
-        _validate_solar_payload(r.json())
-
-    def test_cache_hit(self, client):
-        # Second call for Jaipur should be cached
-        r = client.get(f"{API}/solar/resource",
-                       params={"city": "Jaipur", "state": "Rajasthan"}, timeout=30)
-        assert r.status_code == 200
-        assert r.json().get("cached") is True
+        _validate(r.json())

@@ -5,7 +5,9 @@ import { Section, Card, Btn, Disclaimer, Metric, Pill, ScoreGauge, SourceTag } f
 import { Field, TextInput, NumberInput, Select, SliderInput, Segmented } from "@/components/Form";
 import { AreaChartCard, BarChartCard, LineChartCard, ComposedCashflowCard, CostPieCard, TornadoChart } from "@/components/Charts";
 import { STATES, getStateByName } from "@/data/states";
-import { getDiscomsByState, getDiscomByName, DISCOMS } from "@/data/discoms";
+import { getDiscomsByState, getDiscomByName, DISCOMS, suggestDiscoms, stateTariffRange } from "@/data/discoms";
+import { SolarDataCard } from "@/components/SolarDataCard";
+import { DiscomTariffNote } from "@/components/DiscomTariff";
 import { BUSINESS_TYPES, getIndustry } from "@/data/industries";
 import { DEMO_CUSTOMER } from "@/data/content";
 import { DEFAULTS, rateForCapacity, PANEL_TECH_SPECS, PANEL_WATTAGES, OM_UNITS, omHeadAnnual } from "@/data/config";
@@ -72,7 +74,9 @@ export default function Calculator() {
   const performanceRatio = panelSpec.pr;
   const degradationYr = panelSpec.degradationYr;
   const baseIrradiation = stateObj?.irradiation || 5.2;
-  const irradiation = (f.useWeather && weather?.avgDailyGHI) ? weather.avgDailyGHI : baseIrradiation;
+  const liveSolar = weather && weather.status !== "state_only" && weather.avgDailyGHI ? weather : null;
+  const irradiation = (f.useWeather && liveSolar) ? liveSolar.avgDailyGHI : baseIrradiation;
+  const discomSuggestions = weather?.location?.state ? suggestDiscoms(weather.location.state, weather.location.districts || []) : [];
   const stateDiscoms = f.state ? getDiscomsByState(f.state) : [];
   const selectedDiscom = f.discom ? getDiscomByName(f.discom) : null;
 
@@ -113,29 +117,45 @@ export default function Calculator() {
     omHeadAnnual(f.otherOM, projectCostEst, capacityW);
   const omEscalationFrac = (Number(f.omEscalation) || 0) / 100;
 
-  const fetchWeather = async () => {
-    if (!f.pincode && !f.city) { toast.error("Enter a pincode or city first"); return; }
-    setWeatherLoading(true); setWeatherError("");
-    try {
-      const params = f.pincode ? { pincode: f.pincode, state: f.state } : { city: f.city, state: f.state };
-      const data = await getSolarResource(params);
-      setWeather({ ...data, fallback: false });
-      upd({ useWeather: true });
-      toast.success(`Live solar data loaded for ${data.location?.label || "your area"}`);
-    } catch (e) {
-      // Graceful fallback: use the state-average irradiation from our database.
-      if (stateObj?.irradiation) {
-        setWeather({
-          avgDailyGHI: stateObj.irradiation, sunnyDays: null, avgSunshineHours: null,
-          fallback: true, sources: [{ name: `${f.state} state average (SolarIntelligence DB)`, avgDailyGHI: stateObj.irradiation }],
-          location: { label: `${f.state} — state average` }, method: "Exact-location data unavailable",
-        });
-        upd({ useWeather: true });
-        toast.message(`Exact-location data unavailable — using ${f.state} state average (${stateObj.irradiation} kWh/m²/day).`);
-      } else {
-        const msg = e?.response?.data?.detail || "Could not fetch live solar data — pick your state to use its average.";
-        setWeatherError(msg); toast.error(msg);
+  const pickDiscom = (name) => {
+    const d = getDiscomByName(name);
+    upd({ discom: name, ...(typeof d?.ciTariff === "number" ? { tariff: d.ciTariff } : {}) });
+  };
+
+  // Fill state / city / DISCOM from a verified pincode location (never overrides a different chosen state unless asked).
+  const applyLocation = (loc, force = false) => {
+    if (!loc?.state || !getStateByName(loc.state)) return;
+    if (!force && f.state && f.state !== loc.state) return;
+    const patch = { state: loc.state, city: f.city || loc.district || "" };
+    const keepDiscom = f.state === loc.state && f.discom;
+    if (!keepDiscom) {
+      patch.discom = "";
+      const sug = suggestDiscoms(loc.state, loc.districts || []);
+      if (sug.length === 1) {
+        patch.discom = sug[0].name;
+        if (typeof sug[0].ciTariff === "number") patch.tariff = sug[0].ciTariff;
       }
+    }
+    upd(patch);
+  };
+
+  const fetchWeather = async () => {
+    const pin = (f.pincode || "").trim();
+    if (!pin && !f.city) { setWeatherError("Enter your 6-digit pincode first."); return; }
+    if (pin && !/^[1-9][0-9]{5}$/.test(pin)) { setWeather(null); setWeatherError("Please enter a valid 6-digit Indian pincode (e.g. 302001)."); return; }
+    setWeatherLoading(true); setWeatherError(""); setWeather(null);
+    try {
+      const data = await getSolarResource(pin ? { pincode: pin } : { city: f.city, state: f.state });
+      setWeather(data);
+      applyLocation(data.location);
+      const live = data.status !== "state_only";
+      upd({ useWeather: live });
+      if (live) toast.success(`Solar data loaded for ${data.location?.label || "your location"}`);
+      else toast.message("Exact-location solar data unavailable right now — using the state average.");
+    } catch (e) {
+      const detail = e?.response?.data?.detail;
+      setWeatherError(typeof detail === "string" ? detail : "Couldn't reach the solar data service. Please try again shortly.");
+      upd({ useWeather: false });
     } finally { setWeatherLoading(false); }
   };
 
@@ -229,20 +249,18 @@ export default function Calculator() {
                       <Field label="State / UT *"><Select value={f.state} onChange={(e) => upd({ state: e.target.value, discom: "" })} options={STATES.map((s) => s.name)} placeholder="Select state" data-testid="calc-state" /></Field>
                       <Field label="City *"><TextInput value={f.city} onChange={(e) => upd({ city: e.target.value })} placeholder="e.g. Faridabad" data-testid="calc-city" /></Field>
                     </div>
-                    <Field label="Your electricity DISCOM" hint={stateObj ? `Irradiation at ${f.state}: ${irradiation} kWh/m²/day · picking your DISCOM auto-fills the correct tariff` : "Pick your state first"}>
-                      <Select value={f.discom} onChange={(e) => { const d = getDiscomByName(e.target.value); upd({ discom: e.target.value, ...(d ? { tariff: d.ciTariff } : {}) }); }} options={(stateDiscoms.length ? stateDiscoms : DISCOMS).map((d) => d.name)} placeholder="Select DISCOM" data-testid="calc-discom" />
+                    <Field label="Your electricity DISCOM" hint={stateObj ? `${liveSolar && f.useWeather ? "Live" : "State-average"} irradiation: ${irradiation} kWh/m²/day · picking your DISCOM auto-fills its verified tariff` : "Pick your state first"}>
+                      <Select value={f.discom} onChange={(e) => pickDiscom(e.target.value)} options={(stateDiscoms.length ? stateDiscoms : DISCOMS).map((d) => d.name)} placeholder="Select DISCOM" data-testid="calc-discom" />
                     </Field>
-                    {selectedDiscom && (
-                      <div className="flex items-center gap-2 text-xs text-emerald-400 bg-emerald-500/5 border border-emerald-500/15 rounded-lg px-3 py-2.5">
-                        <CheckCircle2 className="w-3.5 h-3.5 shrink-0" /> Using {selectedDiscom.name}'s FY25-26 tariff of <span className="num font-semibold">₹{selectedDiscom.ciTariff}/kWh</span> (HT energy ₹{selectedDiscom.energyChargeHT}, demand ₹{selectedDiscom.demandCharge}/kVA).
-                      </div>
-                    )}
+                    {selectedDiscom && <DiscomTariffNote d={selectedDiscom} />}
 
                     <div className="pt-3 border-t border-white/10">
                       <div className="text-xs uppercase tracking-wider text-slate-500 font-mono mb-3 flex items-center gap-1.5"><CloudSun className="w-3.5 h-3.5 text-amber-400" /> Live solar data (optional, recommended)</div>
                       <div className="grid sm:grid-cols-2 gap-4">
-                        <Field label="Pincode" hint="Pulls last-12-months sunshine & irradiance for your exact location">
-                          <TextInput value={f.pincode} onChange={(e) => upd({ pincode: e.target.value })} placeholder="e.g. 302001" data-testid="calc-pincode" />
+                        <Field label="Pincode" hint="Cross-checks 5 satellite & climate datasets for your exact location">
+                          <TextInput value={f.pincode} inputMode="numeric" maxLength={6} placeholder="e.g. 302001" data-testid="calc-pincode"
+                            onChange={(e) => { upd({ pincode: e.target.value.replace(/\D/g, "").slice(0, 6), useWeather: false }); setWeather(null); setWeatherError(""); }}
+                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); fetchWeather(); } }} />
                         </Field>
                         <Field label={"\u00A0"}>
                           <Btn type="button" variant="outline" onClick={fetchWeather} disabled={weatherLoading} className="w-full" data-testid="fetch-weather-btn">
@@ -250,38 +268,16 @@ export default function Calculator() {
                           </Btn>
                         </Field>
                       </div>
-                      {weatherError && <div className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2" data-testid="weather-error">{weatherError}</div>}
-                      {weather && (
-                        <div className="mt-3 p-4 rounded-lg bg-amber-500/5 border border-amber-500/20" data-testid="weather-result">
-                          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-                            <div className="text-xs text-slate-300 flex items-center gap-2">
-                              {weather.location?.label}
-                              {weather.fallback && <span className="px-1.5 py-0.5 rounded bg-blue-500/15 text-blue-300 text-[10px] font-mono">STATE AVG</span>}
-                            </div>
-                            <Segmented options={[{ value: true, label: "Use this data" }, { value: false, label: "State average" }]} value={f.useWeather} onChange={(v) => upd({ useWeather: v })} testId="weather-toggle" />
-                          </div>
-                          <div className="grid grid-cols-3 gap-3 text-center">
-                            <div><div className="num text-xl font-bold text-emerald-400">{weather.avgDailyGHI}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">kWh/m²/day (peak sun hrs)</div></div>
-                            <div><div className="num text-xl font-bold text-amber-400">{weather.sunnyDays ?? "—"}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Sunny days / yr</div></div>
-                            <div><div className="num text-xl font-bold text-blue-400">{weather.avgSunshineHours ?? "—"}</div><div className="text-[10px] text-slate-500 uppercase tracking-wider font-mono">Sun hrs / day</div></div>
-                          </div>
-                          {weather.sources?.length > 0 && (
-                            <div className="mt-3 pt-3 border-t border-white/10">
-                              <div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono mb-1.5">Cross-checked across {weather.sources.length} source{weather.sources.length > 1 ? "s" : ""} · {weather.method}</div>
-                              <div className="flex flex-wrap gap-x-4 gap-y-1">
-                                {weather.sources.map((s) => (
-                                  <span key={s.name} className="text-[11px] text-slate-400">{s.name}: <span className="num text-slate-200 font-semibold">{s.avgDailyGHI}</span></span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                          {!weather.fallback && weather.periodStart && (
-                            <div className="text-[10px] text-slate-600 mt-3">Sunny day = mean cloud cover &lt; {weather.sunnyDayMaxCloudPct}% (Open-Meteo, {weather.periodStart} → {weather.periodEnd}). Sources: Open-Meteo ERA5, NASA POWER, PVGIS.</div>
-                          )}
-                          {weather.fallback && (
-                            <div className="text-[10px] text-slate-600 mt-3">Exact-location satellite data wasn't available for this pincode/city, so we're using your state's average irradiation from our database.</div>
-                          )}
+                      {weatherError && (
+                        <div className="mt-3 text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2" data-testid="weather-error">
+                          {weatherError}{stateObj ? ` The calculator is using the ${f.state} state average (${stateObj.irradiation} kWh/m²/day) meanwhile.` : ""}
                         </div>
+                      )}
+                      {weather && (
+                        <SolarDataCard data={weather} useLive={f.useWeather} onToggle={(v) => upd({ useWeather: v })}
+                          selectedState={f.state} stateAvg={stateObj?.irradiation}
+                          onSwitchState={() => applyLocation(weather.location, true)}
+                          suggestions={discomSuggestions} selectedDiscom={f.discom} onPickDiscom={pickDiscom} />
                       )}
                     </div>
                   </div>
@@ -297,7 +293,7 @@ export default function Calculator() {
                       {f.billMethod === "bill"
                         ? <Field label="Average monthly bill (₹) *"><NumberInput prefix="₹" value={f.monthlyBill} onChange={(e) => upd({ monthlyBill: e.target.value })} placeholder="100000" data-testid="calc-bill" /></Field>
                         : <Field label="Average monthly units (kWh) *"><NumberInput value={f.monthlyUnits} onChange={(e) => upd({ monthlyUnits: e.target.value })} suffix="kWh" placeholder="100000" data-testid="calc-units" /></Field>}
-                      <Field label="Your tariff (₹/kWh) *" hint={selectedDiscom ? `Auto-filled from ${f.discom}. Adjust if yours differs.` : (stateObj ? `${f.state} C&I range ₹${stateObj.ciTariffLow}–${stateObj.ciTariffHigh}` : "")}>
+                      <Field label="Your tariff (₹/kWh) *" hint={selectedDiscom ? (typeof selectedDiscom.ciTariff === "number" ? `Auto-filled from ${f.discom} (verified ${selectedDiscom.lastVerified}). Replace with your bill's average rate if you know it.` : `${f.discom}'s tariff isn't verified yet — enter your bill's average rate (total ₹ ÷ units).`) : (stateTariffRange(f.state) ? `Verified HT rates in ${f.state}: ${stateTariffRange(f.state)}` : "Enter your bill's average rate (total ₹ ÷ units).")}>
                         <NumberInput prefix="₹" value={f.tariff} onChange={(e) => upd({ tariff: e.target.value })} suffix="/kWh" data-testid="calc-tariff" />
                       </Field>
                     </div>
@@ -445,7 +441,7 @@ export default function Calculator() {
         </div>
       )}
 
-      {showResults && model && <Results f={f} model={model} capacityKw={capacityKw} fullKw={fullKw} areaNeed={areaNeed} coveragePct={coveragePct} areaLimited={areaLimited} fitKw={fitKw} hasAreaInput={hasAreaInput} irradiation={irradiation} ratePerWatt={ratePerWatt} annualUnits={annualUnits} effectiveTariff={effectiveTariff} monthlyBill={monthlyBill} performanceRatio={performanceRatio} degradationYr={degradationYr} annualOM={annualOM} omEscalation={omEscalationFrac} panelCount={panelCount} perPanelDailyUnits={perPanelDailyUnits} weather={f.useWeather ? weather : null} panelWattage={f.panelWattage} panelTech={f.panelTech} reportRef={reportRef} onEdit={() => setShowResults(false)} />}
+      {showResults && model && <Results f={f} model={model} capacityKw={capacityKw} fullKw={fullKw} areaNeed={areaNeed} coveragePct={coveragePct} areaLimited={areaLimited} fitKw={fitKw} hasAreaInput={hasAreaInput} irradiation={irradiation} ratePerWatt={ratePerWatt} annualUnits={annualUnits} effectiveTariff={effectiveTariff} monthlyBill={monthlyBill} performanceRatio={performanceRatio} degradationYr={degradationYr} annualOM={annualOM} omEscalation={omEscalationFrac} panelCount={panelCount} perPanelDailyUnits={perPanelDailyUnits} weather={f.useWeather ? liveSolar : null} panelWattage={f.panelWattage} panelTech={f.panelTech} reportRef={reportRef} onEdit={() => setShowResults(false)} />}
     </div>
   );
 }
@@ -746,7 +742,7 @@ function Results({ f, model, capacityKw, fullKw, areaNeed, coveragePct, areaLimi
           <h3 className="font-head font-semibold text-lg text-slate-100 mb-4">Assumptions & Sources</h3>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 text-xs text-slate-400">
             {[
-              ["Irradiation", `${irradiation} kWh/m²/day (${weather ? "live · " + (weather.location?.label || "site") : f.state})`],
+              ["Irradiation", `${irradiation} kWh/m²/day (${weather ? `${weather.method} · ${weather.location?.label || "site"}` : `${f.state} state average · Global Solar Atlas`})`],
               ["Performance ratio", `${performanceRatio} (${panelTech}, ${f.shading} shading)`],
               ["Specific yield", `~${Math.round(specificYieldCalc(irradiation, f.shading, performanceRatio))} kWh/kW/yr`],
               ["Degradation", `~${(degradationYr * 100).toFixed(2)}% / yr (${panelTech})`],

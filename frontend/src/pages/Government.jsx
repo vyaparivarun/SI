@@ -72,8 +72,8 @@ export default function Government() {
           <div className="grid md:grid-cols-2 gap-6 text-sm">
             <div className="space-y-4">
               {[
-                ["GST on solar equipment", "Solar PV modules, inverters and specified components attract concessional GST. Composite EPC contracts follow the 70:30 goods:service valuation split notified by the GST Council. Registered businesses may claim Input Tax Credit subject to conditions."],
-                ["Accelerated Depreciation", "Under Section 32, businesses owning solar assets (CAPEX/Captive) can write off 40% of asset cost in year one, plus normal depreciation — a significant first-year tax shield. Not available under OPEX where the developer owns the asset."],
+                ["GST on solar equipment", "Since 22-Sep-2025, solar PV modules, cells and solar power generating devices attract 5% GST (earlier 12%). Solar EPC contracts are valued 70% goods at 5% and 30% services at 18% — an effective ≈8.9% on the contract value. Registered businesses may claim Input Tax Credit subject to conditions."],
+                ["Accelerated Depreciation", "Under the Income-tax Act, 2025 (in force from 1-Apr-2026), solar power generating systems owned by the business (CAPEX/Captive) are depreciated at 40% of written-down value — 20% if used for less than 180 days in the first year. Not available to the customer under OPEX, where the developer owns the asset."],
               ].map(([t, d]) => (
                 <div key={t}><div className="font-semibold text-slate-100 mb-1">{t}</div><p className="text-slate-400 leading-relaxed">{d}</p></div>
               ))}
@@ -88,7 +88,7 @@ export default function Government() {
             </div>
           </div>
           <Disclaimer className="mt-6">Indicative information only. GST rates and tax treatment change periodically and depend on your specific facts. Tax treatment should be confirmed with a qualified tax professional.</Disclaimer>
-          <SourceTag className="mt-3" source="CBIC GST notifications / Income Tax Act, 1961 (Section 32)" verified="2026-06" />
+          <SourceTag className="mt-3" source="CBIC Notification 9/2025-CT(Rate) (5% GST from 22-Sep-2025) / Income-tax Act, 2025" verified="2026-10-21" />
         </Card>
       </Section>
     </div>

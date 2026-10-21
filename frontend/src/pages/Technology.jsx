@@ -65,7 +65,7 @@ export default function Technology() {
             ))}
           </div>
         </div>
-        <Disclaimer className="mt-6">From 1 June 2026, grid-connected, net-metered and open-access projects must use ALMM List-I modules and List-II cells. Confirm equipment compliance during procurement.</Disclaimer>
+        <Disclaimer className="mt-6">Modules must be ALMM List-I. For net-metering and open-access projects, ALMM List-II cells are mandatory for projects commissioned on or after 1 January 2027 (MNRE OM, 18-Jul-2026). Confirm equipment compliance during procurement.</Disclaimer>
         <div className="mt-6"><Btn as={Link} to="/calculator">Size your system <ArrowRight className="w-4 h-4" /></Btn></div>
       </Section>
     </div>

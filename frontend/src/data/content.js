@@ -59,7 +59,7 @@ export const GLOSSARY = [
   { term: "Gross Metering", def: "All solar energy is exported and sold at a feed-in tariff; consumption billed separately." },
   { term: "Open Access (GEOA)", def: "Regulatory route allowing ≥100 kW consumers to buy renewable power directly from a generator." },
   { term: "Cross Subsidy Surcharge (CSS)", def: "Charge levied on open-access consumers to compensate DISCOMs for lost cross-subsidy." },
-  { term: "Accelerated Depreciation", def: "Tax provision (Section 32) allowing 40% first-year depreciation on solar assets, reducing taxable income." },
+  { term: "Accelerated Depreciation", def: "Solar power generating systems are depreciated at 40% of written-down value (Income-tax Act, 2025; earlier Section 32), reducing taxable income." },
   { term: "REC", def: "Renewable Energy Certificate — a tradable certificate representing 1 MWh of renewable generation's environmental attribute." },
   { term: "DSCR", def: "Debt Service Coverage Ratio — net operating income divided by debt service; lenders look for comfortable coverage (>1.2–1.3x)." },
   { term: "IRR", def: "Internal Rate of Return — the discount rate at which project NPV equals zero; a core return metric." },
@@ -70,12 +70,12 @@ export const GLOSSARY = [
 ];
 
 export const FAQS = [
-  { q: "Does the government give a subsidy for commercial or industrial solar?", a: "There is no direct central capital subsidy for C&I solar. The PM Surya Ghar subsidy is residential-only. C&I customers instead benefit from Accelerated Depreciation (Section 32), state incentives (e.g. electricity duty exemptions) and the Green Open Access framework." },
+  { q: "Does the government give a subsidy for commercial or industrial solar?", a: "There is no direct central capital subsidy for C&I solar. The PM Surya Ghar subsidy is residential-only. C&I customers instead benefit from 40% accelerated depreciation (Income-tax Act, 2025), 5% GST on solar equipment, state incentives (e.g. electricity duty exemptions) and the Green Open Access framework." },
   { q: "How much roof area do I need?", a: "As a rule of thumb, about 100 sq ft of shadow-free roof supports roughly 1 kW of solar. A 500 kW plant needs roughly 50,000 sq ft. The calculator caps the recommended size by your available area." },
   { q: "Will my monthly savings be more than my EMI?", a: "Often yes for high-tariff, high-daytime-load businesses — but it depends on tariff, generation, project cost and loan terms. The Solar vs EMI cash-flow view shows exactly when savings exceed EMI." },
   { q: "What is the typical payback period?", a: "Indicatively 3–6 years for strong C&I cases, but it varies with tariff, irradiation, cost and financing. The calculator computes both simple and discounted payback for your inputs." },
   { q: "Can the whole project be financed?", a: "Financing partners on the platform offer solar loans (indicatively up to ₹3 Cr per project) subject to credit assessment. Financing share, rate and tenure are decided during assessment — all figures on this platform are indicative." },
-  { q: "Do I need ALMM-listed panels?", a: "From 1 June 2026, grid-connected, net-metered and open-access projects must use ALMM List-I modules and List-II cells. Ensure your EPC quotes ALMM-compliant equipment." },
+  { q: "Do I need ALMM-listed panels?", a: "Yes. Modules must be ALMM List-I. For net-metering and open-access projects, ALMM List-II cells become mandatory for projects commissioned on or after 1 January 2027 (MNRE OM, 18-Jul-2026). Ensure your EPC quotes ALMM-compliant equipment." },
   { q: "Are REC earnings guaranteed?", a: "No. REC eligibility, registration, issuance and price depend on project structure and CERC/state rules. Any REC value shown is indicative only." },
 ];
 

@@ -261,153 +261,7 @@ async def platform_stats():
 
 
 # --------------------- Solar resource (multi-source) ---------------------
-# Resolves a location (pincode / city+state / lat+lon) and cross-checks the
-# solar resource across THREE free, keyless, authoritative sources:
-#   - Open-Meteo Historical Archive (ERA5, last ~12 months) -> GHI + cloud cover
-#   - NASA POWER (long-term climatology)                    -> GHI
-#   - PVGIS / EU-JRC (SARAH satellite climatology)          -> GHI
-# The reported avgDailyGHI is the MEDIAN of available sources; each source is
-# returned for transparency. "Sunny days" = days with mean cloud cover < 40%.
-# Geocoding: Zippopotam.us (IN pincode) with Open-Meteo Geocoding fallback.
-# Results are cached in Mongo (by rounded lat/lon) to avoid repeat calls.
-import asyncio  # noqa: E402
-import statistics  # noqa: E402
-import httpx  # noqa: E402
-from datetime import timedelta  # noqa: E402
-
-SUNNY_DAY_MAX_CLOUD = 40.0       # a day is "sunny" if mean cloud cover < 40%
-SOLAR_CACHE_TTL_DAYS = 14
-
-
-async def _geocode_pincode(pincode: str):
-    url = f"https://api.zippopotam.us/IN/{pincode}"
-    async with httpx.AsyncClient(timeout=12) as cx:
-        r = await cx.get(url)
-        if r.status_code != 200:
-            return None
-        data = r.json()
-        places = data.get("places") or []
-        if not places:
-            return None
-        p = places[0]
-        return {
-            "lat": float(p["latitude"]),
-            "lon": float(p["longitude"]),
-            "label": f"{p.get('place name','')}, {p.get('state','')} {pincode}".strip(),
-        }
-
-
-async def _geocode_city(name: str, country_code: str = "IN"):
-    url = "https://geocoding-api.open-meteo.com/v1/search"
-    params = {"name": name, "count": 1, "language": "en", "countryCode": country_code}
-    async with httpx.AsyncClient(timeout=12) as cx:
-        r = await cx.get(url, params=params)
-        if r.status_code != 200:
-            return None
-        results = (r.json() or {}).get("results") or []
-        if not results:
-            return None
-        g = results[0]
-        label = ", ".join([x for x in [g.get("name"), g.get("admin1"), g.get("country")] if x])
-        return {"lat": float(g["latitude"]), "lon": float(g["longitude"]), "label": label}
-
-
-async def _src_openmeteo(lat: float, lon: float):
-    """Open-Meteo ERA5 archive — last ~12 months. Also gives cloud cover & sunshine."""
-    end = (datetime.now(timezone.utc) - timedelta(days=6)).date()
-    start = end - timedelta(days=364)
-    url = "https://archive-api.open-meteo.com/v1/archive"
-    params = {
-        "latitude": round(lat, 3), "longitude": round(lon, 3),
-        "start_date": start.isoformat(), "end_date": end.isoformat(),
-        "daily": "shortwave_radiation_sum,sunshine_duration,cloud_cover_mean",
-        "timezone": "auto",
-    }
-    async with httpx.AsyncClient(timeout=30) as cx:
-        r = await cx.get(url, params=params)
-        r.raise_for_status()
-        daily = (r.json() or {}).get("daily") or {}
-    rad = [x for x in (daily.get("shortwave_radiation_sum") or []) if x is not None]
-    if not rad:
-        return None
-    ghi_vals = [x / 3.6 for x in rad]  # MJ/m2/day -> kWh/m2/day
-    total_days = len(rad)
-    cc = [x for x in (daily.get("cloud_cover_mean") or []) if x is not None]
-    sun_h = [s / 3600.0 for s in (daily.get("sunshine_duration") or []) if s is not None]
-    sunny = sum(1 for c in cc if c < SUNNY_DAY_MAX_CLOUD) if cc else None
-    sunny_year = round(sunny * 365 / len(cc)) if cc else None
-    return {
-        "name": "Open-Meteo (ERA5, last 12 mo)",
-        "avgDailyGHI": round(statistics.mean(ghi_vals), 2),
-        "avgSunshineHours": round(statistics.mean(sun_h), 1) if sun_h else None,
-        "sunnyDays": sunny_year,
-        "totalDays": total_days,
-        "periodStart": start.isoformat(),
-        "periodEnd": end.isoformat(),
-    }
-
-
-async def _src_nasa(lat: float, lon: float):
-    """NASA POWER climatology — long-term average GHI (kWh/m2/day)."""
-    url = "https://power.larc.nasa.gov/api/temporal/climatology/point"
-    params = {"parameters": "ALLSKY_SFC_SW_DWN", "community": "RE",
-              "longitude": round(lon, 3), "latitude": round(lat, 3), "format": "JSON"}
-    async with httpx.AsyncClient(timeout=30) as cx:
-        r = await cx.get(url, params=params)
-        r.raise_for_status()
-        d = (((r.json() or {}).get("properties") or {}).get("parameter") or {}).get("ALLSKY_SFC_SW_DWN") or {}
-    ann = d.get("ANN")
-    if ann is None or ann < 0:
-        return None
-    return {"name": "NASA POWER (climatology)", "avgDailyGHI": round(float(ann), 2)}
-
-
-async def _src_pvgis(lat: float, lon: float):
-    """PVGIS / EU-JRC (SARAH satellite) — monthly horizontal irradiation."""
-    url = "https://re.jrc.ec.europa.eu/api/v5_2/MRcalc"
-    params = {"lat": round(lat, 3), "lon": round(lon, 3), "horirrad": 1, "outputformat": "json"}
-    async with httpx.AsyncClient(timeout=30) as cx:
-        r = await cx.get(url, params=params)
-        r.raise_for_status()
-        monthly = (((r.json() or {}).get("outputs") or {}).get("monthly") or [])
-    if not monthly:
-        return None
-    per_year = {}
-    for m in monthly:
-        per_year[m.get("year")] = per_year.get(m.get("year"), 0.0) + (m.get("H(h)_m") or 0.0)
-    if not per_year:
-        return None
-    annual = statistics.mean(per_year.values())  # kWh/m2/yr
-    return {"name": "PVGIS (SARAH satellite)", "avgDailyGHI": round(annual / 365.0, 2)}
-
-
-async def _fetch_solar(lat: float, lon: float):
-    results = await asyncio.gather(
-        _src_openmeteo(lat, lon), _src_nasa(lat, lon), _src_pvgis(lat, lon),
-        return_exceptions=True,
-    )
-    sources, om = [], None
-    for res in results:
-        if isinstance(res, Exception) or res is None:
-            continue
-        if res["name"].startswith("Open-Meteo"):
-            om = res
-        sources.append({"name": res["name"], "avgDailyGHI": res["avgDailyGHI"]})
-    if not sources:
-        return None
-    ghis = [s["avgDailyGHI"] for s in sources]
-    consensus = round(statistics.median(ghis), 2)
-    return {
-        "avgDailyGHI": consensus,
-        "sunnyDays": (om or {}).get("sunnyDays"),
-        "avgSunshineHours": (om or {}).get("avgSunshineHours"),
-        "sunnyDayMaxCloudPct": SUNNY_DAY_MAX_CLOUD,
-        "totalDaysAnalyzed": (om or {}).get("totalDays"),
-        "periodStart": (om or {}).get("periodStart"),
-        "periodEnd": (om or {}).get("periodEnd"),
-        "sources": sources,
-        "method": f"Median of {len(sources)} source(s)",
-    }
+import solar_service  # noqa: E402
 
 
 @api_router.get("/solar/resource")
@@ -418,52 +272,14 @@ async def solar_resource(
     lat: Optional[float] = None,
     lon: Optional[float] = None,
 ):
-    loc = None
-    if lat is not None and lon is not None:
-        loc = {"lat": lat, "lon": lon, "label": f"{round(lat,3)}, {round(lon,3)}"}
-    elif pincode:
-        loc = await _geocode_pincode(pincode.strip())
-        if not loc:
-            loc = await _geocode_city(pincode.strip())
-        if not loc:
-            raise HTTPException(status_code=404, detail="Could not resolve that pincode — using state average instead.")
-    elif city:
-        query = f"{city},{state}" if state else city
-        loc = await _geocode_city(query)
-        if not loc:
-            raise HTTPException(status_code=404, detail="Could not resolve that city — using state average instead.")
-    else:
-        raise HTTPException(status_code=400, detail="Provide a pincode, city, or lat/lon.")
-
-    key = f"{round(loc['lat'],2)},{round(loc['lon'],2)}"
-    cached = await db.solar_cache.find_one({"key": key}, {"_id": 0})
-    if cached:
-        try:
-            fetched = datetime.fromisoformat(cached.get("fetchedAt"))
-            if datetime.now(timezone.utc) - fetched < timedelta(days=SOLAR_CACHE_TTL_DAYS):
-                out = cached["data"]
-                out["location"] = loc
-                out["cached"] = True
-                return out
-        except Exception:
-            pass
-
+    """Pincode/city -> verified location -> cross-checked solar resource. Never 500s."""
     try:
-        data = await _fetch_solar(loc["lat"], loc["lon"])
+        return await solar_service.solar_resource(db, pincode=pincode, city=city, state=state, lat=lat, lon=lon)
+    except solar_service.SolarError as e:
+        raise HTTPException(status_code=e.status, detail=e.message)
     except Exception as e:
-        logger.warning(f"Solar sources failed: {e}")
-        raise HTTPException(status_code=502, detail="Solar data services are temporarily unavailable. Please try again.")
-    if not data:
-        raise HTTPException(status_code=502, detail="No solar data available for this location.")
-
-    await db.solar_cache.update_one(
-        {"key": key},
-        {"$set": {"key": key, "data": data, "fetchedAt": now_iso()}},
-        upsert=True,
-    )
-    data["location"] = loc
-    data["cached"] = False
-    return data
+        logger.exception(f"solar_resource failed: {e!r}")
+        raise HTTPException(status_code=503, detail="Live solar data is temporarily unavailable. The calculator will use your state's average.")
 
 
 app.include_router(api_router)
@@ -479,4 +295,5 @@ app.add_middleware(
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
+    await solar_service.close_http()
     client.close()
