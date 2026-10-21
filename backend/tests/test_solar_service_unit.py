@@ -179,9 +179,45 @@ def test_state_mismatch_rejected(monkeypatch):
     monkeypatch.setattr(ss, "_india_post", ip)
     monkeypatch.setattr(ss, "_nominatim_pin", pin_geo("nom", state="Maharashtra", lat=19.0, lon=72.8))
     monkeypatch.setattr(ss, "_photon_pin", pin_geo("photon", state="Bihar", lat=25.0, lon=85.0))
+    monkeypatch.setattr(ss, "_openmeteo_place", place_geo("om", ok=False))
+    monkeypatch.setattr(ss, "_photon_place", place_geo("pp", ok=False))
     monkeypatch.setattr(ss, "_zippopotam", pin_geo("zip", state="Uttar Pradesh"))
     loc = run(ss.resolve_pincode(FakeDB(), "201010"))
     assert loc["geocoder"] == "zip" and loc["state"] == "Uttar Pradesh"
+
+
+# New order: Nominatim -> Photon -> district centre -> Zippopotam (last)
+def test_district_centre_preferred_over_zippopotam(monkeypatch):
+    async def ip(pin):
+        return POST_UP
+    monkeypatch.setattr(ss, "_india_post", ip)
+    for n in ("_nominatim_pin", "_photon_pin"):
+        monkeypatch.setattr(ss, n, pin_geo(n, fail=True))
+    monkeypatch.setattr(ss, "_openmeteo_place", place_geo("om"))
+    monkeypatch.setattr(ss, "_photon_place", place_geo("pp"))
+    monkeypatch.setattr(ss, "_zippopotam", pin_geo("zip"))
+    loc = run(ss.resolve_pincode(FakeDB(), "201010"))
+    assert loc["geocoder"] == "om" and loc["precision"] == "district"
+
+
+def test_unmappable_geocoder_state_rejected_when_post_known(monkeypatch):
+    async def ip(pin):
+        return POST_UP
+    monkeypatch.setattr(ss, "_india_post", ip)
+    monkeypatch.setattr(ss, "_nominatim_pin", pin_geo("nom", state="Atlantis Province"))
+    monkeypatch.setattr(ss, "_photon_pin", pin_geo("photon", state="Uttar Pradesh"))
+    loc = run(ss.resolve_pincode(FakeDB(), "201010"))
+    assert loc["geocoder"] == "photon"
+    assert ss._state_ok("Atlantis Province", "Uttar Pradesh") is False
+    assert ss._state_ok(None, "Uttar Pradesh") is True
+
+
+def test_real_zippopotam_precision_is_approximate(monkeypatch):
+    async def fake_get(url, *a, **k):
+        return {"places": [{"latitude": "28.6", "longitude": "77.4", "state": "Uttar Pradesh"}]}
+    monkeypatch.setattr(ss, "_get_json", fake_get)
+    out = run(ss._zippopotam("201010"))
+    assert out["precision"] == "approximate" and out["geocoder"] == "Zippopotam.us"
 
 
 def test_district_fallback(monkeypatch):
@@ -215,6 +251,8 @@ def test_everything_down_503(monkeypatch):
     monkeypatch.setattr(ss, "_india_post", ip_fail)
     for n in ("_nominatim_pin", "_photon_pin", "_zippopotam"):
         monkeypatch.setattr(ss, n, pin_geo(n, fail=True))
+    monkeypatch.setattr(ss, "_openmeteo_place", place_geo("om", ok=False))
+    monkeypatch.setattr(ss, "_photon_place", place_geo("pp", ok=False))
     with pytest.raises(ss.SolarError) as e:
         run(ss.resolve_pincode(FakeDB(), "201010"))
     assert e.value.status == 503

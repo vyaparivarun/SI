@@ -447,14 +447,14 @@ async def fetch_solar(lat: float, lon: float):
 async def get_solar(db, lat: float, lon: float):
     """Returns (data, cacheStatus) — prefers fresh cache, then live, then stale cache."""
     key = f"{lat:.2f},{lon:.2f}"
-    cached = await db.solar_cache.find_one({"key": key, "v": 3}, {"_id": 0})
+    cached = await db.solar_cache.find_one({"key": key, "v": 4}, {"_id": 0})
     age = now_utc() - datetime.fromisoformat(cached["fetchedAt"]) if cached else None
     if cached and age < timedelta(days=FRESH_DAYS):
         return cached["data"], "cached"
     live = await fetch_solar(lat, lon)
     if live and live["sourcesUsed"] >= 2:
-        await db.solar_cache.update_one({"key": key, "v": 3},
-                                        {"$set": {"key": key, "v": 3, "data": live, "fetchedAt": live["fetchedAt"]}},
+        await db.solar_cache.update_one({"key": key, "v": 4},
+                                        {"$set": {"key": key, "v": 4, "data": live, "fetchedAt": live["fetchedAt"]}},
                                         upsert=True)
         return live, "live"
     if cached and age < timedelta(days=STALE_DAYS) and cached["data"].get("sourcesUsed", 0) >= 2:

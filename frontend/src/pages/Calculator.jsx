@@ -81,14 +81,16 @@ export default function Calculator() {
   const selectedDiscom = f.discom ? getDiscomByName(f.discom) : null;
 
   // ---------- Electricity ----------
+  // No tariff entered (e.g. unverified DISCOM) -> no estimate at all, never an assumed rate.
+  const tariffNum = Number(f.tariff) || 0;
   const monthlyUnits = f.billMethod === "units"
     ? Number(f.monthlyUnits) || 0
-    : (Number(f.monthlyBill) || 0) / (Number(f.tariff) || 8);
+    : (tariffNum ? (Number(f.monthlyBill) || 0) / tariffNum : 0);
   const monthlyBill = f.billMethod === "bill"
     ? Number(f.monthlyBill) || 0
-    : (Number(f.monthlyUnits) || 0) * (Number(f.tariff) || 8);
-  const annualUnits = monthlyUnits * 12;
-  const effectiveTariff = Number(f.tariff) || (monthlyUnits > 0 ? monthlyBill / monthlyUnits : 8);
+    : (Number(f.monthlyUnits) || 0) * tariffNum;
+  const annualUnits = tariffNum ? monthlyUnits * 12 : 0;
+  const effectiveTariff = tariffNum;
 
   // ---------- Area-driven sizing ----------
   const shadingLoss = SHADE_LOSS[f.shading] ?? 0.03;
@@ -298,7 +300,7 @@ export default function Calculator() {
                         <NumberInput prefix="₹" value={f.tariff} onChange={(e) => upd({ tariff: e.target.value })} suffix="/kWh" data-testid="calc-tariff" />
                       </Field>
                     </div>
-                    {monthlyUnits > 0 && (
+                    {monthlyUnits > 0 && tariffNum > 0 && (
                       <div className="p-3.5 rounded-lg bg-blue-500/5 border border-blue-500/15 text-sm text-slate-300">
                         You use ~<span className="num text-blue-400 font-semibold">{num(monthlyUnits)} kWh/month</span> and spend <span className="num text-blue-400 font-semibold">{inr(monthlyBill)}/month</span> ({inr(monthlyBill * 12)}/year).
                       </div>

@@ -1,0 +1,41 @@
+{
+  "summary": "Iteration 8 retest of the 5 fixes from iteration_7 plus a regression pass. All 5 fixes work. Backend: 56/56 pytest pass (20 unit + live/API suites). I updated test_solar_service_unit.py for the new geocoder order and added 3 tests. Frontend: every requested flow passes on the live preview URL. Two minor issues found (stale cached NASA period label; Live Estimate quietly uses ₹8 when the tariff is empty).",
+  "verified_fixes": {
+    "FIX1_force_switch_city": "PASS - Rajasthan/Jaipur + 201010 -> mismatch banner -> switch gives State=Uttar Pradesh, City=Ghaziabad, DISCOM=PVVNL (Paschimanchal), tariff 7.1 in step 2. Empty state -> city auto-fills Ghaziabad. UP + typed 'Noida' -> Noida kept.",
+    "FIX2_unverified_discom_clears_tariff": "PASS - 380015: UGVCL tariff 6.9, then Torrent -> tariff '' + [discom-tariff-unverified]. The 'average rate' sentence appears once. Goa -> 'Electricity Department, Goa' -> tariff '' and Continue is blocked with 'Please enter your monthly bill (or units) and average tariff.'",
+    "FIX3_solar_covers_capped": "PASS - BESCOM 560058 ₹5,00,000: Solar covers ₹5,00,000 (= bill), EMI ₹3,38,654, net ₹1,43,833, payback 4.0 yrs, IRR 28.3%. Goa ₹3,00,000 @ ₹7: covers ₹3,00,000, net ₹40,111, payback 4.8, IRR 23.8%. No NaN/undefined.",
+    "FIX4_backend_geocoder": "PASS - 110020 -> precision 'district', Photon, South Delhi (28.4993,77.1744). Freshly fetched NASA climatology period = 'Long-term climatology (January 2001 - December 2025)'. 503 detail string is in server.py:282. _state_ok rejects unmappable states when India Post state is known (unit test).",
+    "FIX5_discom_source_links": "PASS - /discoms renders 69 discom-row-* cards and 69 discom-source-link-* links, all http(s), none missing."
+  },
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "/api/solar/resource (solar_cache)", "issue": "22 solar_cache docs were written at 14:17-14:22, before the 14:28 solar_service.py edit. They still say 'Long-term climatology' with no date range (for example pincode 201010 / key 28.65,77.36). New fetches are correct. Fix: clear solar_cache once more, or add a schema/version field to the cache key."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {"flow": "Calculator step 2 with an unverified DISCOM (Goa/Torrent) and an empty tariff", "issue": "Calculator.jsx:86-91 falls back to Number(f.tariff)||8. While the tariff is blank, the Live Estimate side panel shows real-looking numbers (Goa ₹3L bill: Plant 359 kW, Monthly saving ₹72,438, EMI ₹2,16,373, Payback 4.2 yrs) and the readout says 'You use ~37,500 kWh/month', all based on an assumed ₹8. The final results stay gated by validation. Fix: show '—' or 'enter tariff' in the Live Estimate and units readout while the tariff is empty for unverified DISCOMs.", "affected_selectors": ["[data-testid='calc-tariff']", "Live Estimate panel (no testid)"]}
+    ],
+    "design_issues": []
+  },
+  "regression": "PASS - 201010 live card (5 sources, India Post verified chip, exact pincode/Nominatim, sunny days 192 range 172-211, monthly strip, PVVNL suggestion). 12345 inline validation. 999999 India Post not-found message. Live/state-average toggle (hint 4.79 <-> 4.78). /states, /solar/state/UP, /government (GST 5% + ALMM 2027 present) and /discoms load with no NaN/undefined. Mobile 390px calculator card has no horizontal overflow.",
+  "test_report_links": ["/app/backend/tests/test_solar_service_unit.py", "/app/backend/tests/test_solar_resource.py", "/app/backend/tests/backend_test.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Clear solar_cache again (entries from before 14:28 lack the NASA period range), or version the cache key.",
+    "While the tariff is empty (unverified DISCOM), don't compute the Live Estimate panel / 'You use ~X kWh' readout with an assumed ₹8."
+  ],
+  "critical_code_review_comments": [
+    "Calculator.jsx is 1087 lines and engine.js is 560. Consider splitting Calculator into step components plus a Results component.",
+    "Calculator.jsx:86-91 hidden default tariff of 8 (see integration issue).",
+    "Hero shows 'Solar covers = Current bill' and 'You still pay grid ₹0', but the engine says demand/fixed charges persist. Consider a footnote that demand charges are excluded, so a ₹0 grid bill is not overstated.",
+    "Some new source URLs (jercuts.gov.in, jercjkl.nic.in, mserc.gov.in, cercind.gov.in/serc.html) timed out from this container and jerc.mizoram.gov.in returned 403. This is likely geo-blocking of datacenter IPs; please check them from an Indian network."
+  ],
+  "updated_files": ["/app/backend/tests/test_solar_service_unit.py"],
+  "success_rate": {"backend": "100% (56/56)", "frontend": "100% of requested flows (2 minor issues noted)"},
+  "seed_data_creation": "None. No leads created.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run pytest with `-n 0` for serial runs. Unit tests monkeypatch _nominatim_pin/_photon_pin/_openmeteo_place/_photon_place/_zippopotam. Always patch the place geocoders too, otherwise district fallback makes real network calls. New tests: test_district_centre_preferred_over_zippopotam, test_unmappable_geocoder_state_rejected_when_post_known, test_real_zippopotam_precision_is_approximate. DISCOM directory cards use discom-row-<id>, not discom-card. Hero values have no testids; parse the text under 'Every month (Year 1)'. Selects are native <select> (use select_option by label). Container clock is Oct 2026."
+}
