@@ -113,11 +113,11 @@ export const FINANCING_PARTNERS = [
     rateLow: 9, rateHigh: 13,
     tenure: "As per loan",
     ltv: "Collateral-free cover",
-    ticket: "Collateral-free up to ₹5 Crore",
+    ticket: "Collateral-free up to ₹10 Crore",
     collateral: "No property pledge required",
     best: "MSMEs without collateral to pledge",
-    note: "A credit-guarantee scheme (not a lender) that lets MSMEs borrow collateral-free up to ₹5 Crore with participating banks.",
-    source: "CGTMSE scheme · verified 2026-06",
+    note: "A credit-guarantee scheme (not a lender) that lets micro & small enterprises borrow collateral-free up to ₹10 Crore from participating banks (limit raised from ₹5 Crore for guarantees from 1-Apr-2025).",
+    source: "CGTMSE circular (1-Apr-2025) · verified 2026-10",
   },
 ];
 

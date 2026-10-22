@@ -1,6 +1,7 @@
 import axios from "axios";
 
-const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+// Unset on Vercel: the browser calls /api on the same domain (routed to the backend service).
+const API = `${process.env.REACT_APP_BACKEND_URL ?? ""}/api`;
 
 export const api = axios.create({ baseURL: API });
 

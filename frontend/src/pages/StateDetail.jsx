@@ -4,8 +4,9 @@ import { PageHeader, Section, Card, Pill, Disclaimer, SourceTag, Btn, Metric } f
 import { getState, DATA_META } from "@/data/states";
 import { getDiscomsByState, stateTariffRange } from "@/data/discoms";
 import { DiscomRatePills } from "@/components/DiscomTariff";
+import { lenderCountForState } from "@/components/LenderDirectory";
 import { num } from "@/lib/format";
-import { Sun, Zap, IndianRupee, MapPin, ArrowRight, Building2 } from "lucide-react";
+import { Sun, Zap, IndianRupee, MapPin, ArrowRight, Building2, Landmark } from "lucide-react";
 
 export default function StateDetail() {
   const { code } = useParams();
@@ -16,7 +17,10 @@ export default function StateDetail() {
   return (
     <div>
       <PageHeader eyebrow="State Solar Profile" title={s.name} subtitle={`${s.policy} · Solar irradiation ${s.irradiation} kWh/m²/day`}>
-        <Btn as={Link} to="/calculator"><Sun className="w-4 h-4" /> Run a {s.name} solar analysis</Btn>
+        <div className="flex flex-wrap gap-3">
+          <Btn as={Link} to="/calculator"><Sun className="w-4 h-4" /> Run a {s.name} solar analysis</Btn>
+          <Btn as={Link} to={`/financing-partners?state=${s.code}#directory`} variant="secondary" data-testid="state-lenders-link"><Landmark className="w-4 h-4" /> {lenderCountForState(s.code)} solar lenders in {s.name}</Btn>
+        </div>
       </PageHeader>
       <Section className="py-14">
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-4 mb-10">

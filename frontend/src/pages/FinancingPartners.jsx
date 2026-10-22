@@ -2,6 +2,8 @@ import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { PageHeader, Section, Card, Btn, Disclaimer, Pill, Eyebrow } from "@/components/ui-kit";
 import { FINANCING_PARTNERS, PARTNER_TYPES } from "@/data/partners";
+import { LENDERS } from "@/data/lenders";
+import { LenderDirectory } from "@/components/LenderDirectory";
 import { Landmark, Percent, Calendar, ShieldCheck, ArrowRight, Building2 } from "lucide-react";
 
 const TONE = { DFI: "emerald", Bank: "blue", NBFC: "amber", Scheme: "violet" };
@@ -16,11 +18,13 @@ export default function FinancingPartners() {
         subtitle="Solar Intelligence is a neutral marketplace. We connect your project to the right lender — banks, NBFCs, DFIs and guarantee schemes financing C&I solar. Rates, tenure and terms are indicative and finalised by each partner at credit assessment.">
         <div className="flex flex-wrap gap-2">
           <Pill tone="emerald"><ShieldCheck className="w-3 h-3" /> Source-tagged</Pill>
-          <Pill tone="amber">{FINANCING_PARTNERS.length} partners listed</Pill>
+          <Pill tone="amber">{LENDERS.length} lenders & schemes · state-wise</Pill>
         </div>
       </PageHeader>
 
       <Section className="py-10">
+        <h2 className="font-head font-semibold text-2xl text-slate-100 mb-2">Key C&I lenders — indicative terms</h2>
+        <p className="text-sm text-slate-400 mb-6">The most-used routes for commercial and industrial projects. For every lender by state, see the directory below.</p>
         <div className="flex flex-wrap gap-2 mb-8" data-testid="finpartner-filters">
           {PARTNER_TYPES.map((t) => (
             <button
@@ -71,6 +75,8 @@ export default function FinancingPartners() {
             </Card>
           ))}
         </div>
+
+        <div className="mt-16" id="directory"><LenderDirectory /></div>
 
         <Card className="hero-radial mt-10">
           <div className="grid lg:grid-cols-2 gap-6 items-center">
