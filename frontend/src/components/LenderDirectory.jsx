@@ -73,9 +73,9 @@ export const LenderDirectory = () => {
       <p className="text-sm text-slate-400 mb-6 max-w-3xl">{LENDERS.length} banks, NBFCs, government institutions, state financiers, development partners and schemes that fund solar in India. Pick your state to see who can lend there — every entry links to its source.</p>
 
       <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-4">
-        <Select options={STATE_OPTIONS} value={f.state} onChange={(e) => f.setState(e.target.value)} data-testid="lender-filter-state" aria-label="State" />
-        <Select options={TYPE_OPTIONS} value={f.type} onChange={(e) => f.setType(e.target.value)} data-testid="lender-filter-type" aria-label="Lender type" />
-        <Select options={SEGMENT_OPTIONS} value={f.segment} onChange={(e) => f.setSegment(e.target.value)} data-testid="lender-filter-segment" aria-label="Project type" />
+        <Select options={STATE_OPTIONS} value={f.state} onChange={(e) => f.setState(e.target.value)} placeholder={null} data-testid="lender-filter-state" aria-label="State" />
+        <Select options={TYPE_OPTIONS} value={f.type} onChange={(e) => f.setType(e.target.value)} placeholder={null} data-testid="lender-filter-type" aria-label="Lender type" />
+        <Select options={SEGMENT_OPTIONS} value={f.segment} onChange={(e) => f.setSegment(e.target.value)} placeholder={null} data-testid="lender-filter-segment" aria-label="Project type" />
         <div className="relative">
           <Search className="w-4 h-4 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none z-10" />
           <TextInput value={f.query} onChange={(e) => f.setQuery(e.target.value)} placeholder="Search lender or scheme" className="pl-9" data-testid="lender-filter-search" />

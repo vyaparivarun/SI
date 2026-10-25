@@ -1,0 +1,27 @@
+{
+  "summary": "Frontend testing of the Financing Partners lender directory, the state-wise lender link and a regression pass. Almost everything passed. Key C&I lender cards and the type chips work (DFI chip leaves 3 cards). The CGTMSE card shows the 10 Crore collateral-free limit. Directory counts: All India 105, Maharashtra 71 (5 specific, in the expected order), Tamil Nadu 68 (Tamil Nadu Grama Bank + TIIC), Kerala 69 (Kerala Grameena Bank, KFC, KSIDC), Uttar Pradesh 68 (Uttar Pradesh Gramin Bank + Metafin), Gujarat 68 (Gujarat Gramin Bank + Kalupur, no Maharashtra co-op banks). RRB filter gives 28, Farm/PM-KUSUM gives 35, 'surya' matches 41, a nonsense search shows lender-empty. All 96 source links have an href and target=_blank. ?state=MH preselects Maharashtra, ?state=ZZ falls back to All of India (105) without crashing, and changing the dropdown updates the URL (picking All removes the param). The TN state page button reads '68 solar lenders in Tamil Nadu' and opens the directory filtered to TN. On mobile (390px) nothing overflows: scrollWidth is 390, the filters stack and the status pill wraps under the lender name. Regression: home, /states, /discoms and /calculator all render, and pincode 560001 gives /api/solar/resource 200 with the solar data card. vercel.json is valid JSON and backend/pyproject.toml is valid TOML. One minor bug: the #directory hash does not scroll the page to the directory.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "FinancingPartners / StateDetail state-lenders-link", "issue": "Opening /financing-partners?state=TN#directory (including by clicking the state-lenders-link button) leaves the page at scrollY=0. The directory is about 1950px below the fold. Nothing in the code handles location.hash, and a scroll-to-top on route change probably overrides the native jump. The user lands at the page top and may not notice that the directory below is filtered.", "selector": "#directory", "priority": "LOW-MEDIUM"},
+      {"component": "LenderDirectory selects", "issue": "The shared Select component puts an extra empty 'Select...' option in front of 'All ...' in the state, type and project-type filters. If a user picks it, the filter value becomes an empty string. For segment and type that matches no lender, so the user gets the empty state. For state it falls back to ALL.", "selector": "[data-testid=lender-filter-segment]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "test_report_links": [],
+  "action_items": [
+    "Scroll to #directory when the URL has that hash, e.g. a useEffect in FinancingPartners: if location.hash === '#directory', call document.getElementById('directory')?.scrollIntoView() after render. Make sure the global scroll-to-top does not override it.",
+    "Hide the 'Select...' placeholder option in the directory filter Selects, or map an empty value to 'ALL'."
+  ],
+  "critical_code_review_comments": [
+    "In LenderDirectory, setState passes the mutated URLSearchParams (p) back to setParams. That works, but returning new URLSearchParams(p) is safer.",
+    "frontend/src/data/lenders.js is 488 lines of pure data, which is acceptable."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "N/A (only a regression check: /api/solar/resource 200)", "frontend": "95%"},
+  "seed_data_creation": "None",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Lender directory has been verified: the counts in the summary all match the spec and the URL state param works. The only open item is that the #directory hash does not scroll. The browser clock reads 2026-10, so the 'verified 2026-xx' dates in the data are consistent."
+}

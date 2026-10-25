@@ -230,7 +230,12 @@ const Footer = () => (
 
 export default function Layout({ children }) {
   const loc = useLocation();
-  React.useEffect(() => { window.scrollTo(0, 0); }, [loc.pathname]);
+  React.useEffect(() => {
+    const id = window.location.hash.slice(1);
+    if (!id) { window.scrollTo(0, 0); return undefined; }
+    const t = setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" }), 150);
+    return () => clearTimeout(t);
+  }, [loc.pathname]);
   return (
     <div className="min-h-screen bg-[#0B132B]">
       <Header />

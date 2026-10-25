@@ -30,7 +30,7 @@ export const NumberInput = React.forwardRef(({ prefix, suffix, className = "", .
 export const Select = React.forwardRef(({ options = [], placeholder = "Select...", className = "", ...rest }, ref) => (
   <div className="relative">
     <select ref={ref} className={`${inputBase} appearance-none pr-9 cursor-pointer ${className}`} {...rest}>
-      <option value="" disabled>{placeholder}</option>
+      {placeholder !== null && <option value="" disabled>{placeholder}</option>}
       {options.map((o) => {
         const val = typeof o === "string" ? o : o.value;
         const lab = typeof o === "string" ? o : o.label;
