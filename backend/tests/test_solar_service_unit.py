@@ -36,6 +36,10 @@ class FakeDB:
     def __init__(self):
         self.solar_cache = FakeColl()
         self.geo_cache = FakeColl()
+        ss._db_down_until = 0.0  # reset 60s cache-skip window between tests
+
+    def __getitem__(self, name):  # cache_get/cache_put use db[coll] (motor-style)
+        return getattr(self, name)
 
 
 def run(c):
@@ -116,7 +120,7 @@ def test_stale_cache_used_when_live_fails(monkeypatch):
     set_sources(monkeypatch, [make_src(0, fail=True)] * 5)
     db = FakeDB()
     old = (ss.now_utc() - timedelta(days=60)).isoformat()
-    db.solar_cache.docs.append({"key": "26.90,75.80", "v": 3, "fetchedAt": old,
+    db.solar_cache.docs.append({"key": "26.90,75.80", "v": 4, "fetchedAt": old,
                                 "data": {"avgDailyGHI": 5.4, "sourcesUsed": 3, "fetchedAt": old}})
     data, st = run(ss.get_solar(db, 26.9, 75.8))
     assert st == "stale" and data["avgDailyGHI"] == 5.4
@@ -126,7 +130,7 @@ def test_very_old_cache_not_used(monkeypatch):
     set_sources(monkeypatch, [make_src(0, fail=True)] * 5)
     db = FakeDB()
     old = (ss.now_utc() - timedelta(days=400)).isoformat()
-    db.solar_cache.docs.append({"key": "26.90,75.80", "v": 3, "fetchedAt": old,
+    db.solar_cache.docs.append({"key": "26.90,75.80", "v": 4, "fetchedAt": old,
                                 "data": {"avgDailyGHI": 5.4, "sourcesUsed": 3, "fetchedAt": old}})
     data, st = run(ss.get_solar(db, 26.9, 75.8))
     assert data is None and st is None

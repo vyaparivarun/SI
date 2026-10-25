@@ -42,10 +42,11 @@ Latest user requests (2026-10-22, verbatim): "make sure to scrap and add all ban
 - 2026-06: Full platform (calculator, financing, state/DISCOM DBs, incentives, REC, industries, EPC portal, resources), rebrand to Solar Intelligence, Financing/EPC partner pages, V2 calculator (O&M, panel tech/wattage, live solar data).
 - 2026-10-21: Robust pincode/solar pipeline (above), DISCOM district mapping & suggestions, verified FY 2026-27 tariffs with links, state data refresh, policy corrections. Tested iteration_7 (backend 53/53) and iteration_8 (backend 56/56, frontend 100% of flows); final 2 minor items fixed (cache version bump, no estimate while tariff empty).
 - 2026-10-22: State-wise solar lender directory (105 sourced entries), CGTMSE limit corrected to ₹10 Cr, Vercel multi-service config (vercel.json + backend/pyproject.toml + same-domain API base). Tested iteration_9 (frontend 95%; 2 minor issues — #directory scroll and placeholder option — fixed and re-checked by screenshot). Production build verified with REACT_APP_BACKEND_URL unset (no preview URL in bundle); backend imports cleanly with only pyproject deps.
+- 2026-10-22: Fixed the live Vercel site (si.atoznavigator.com): every /api route returned 500 FUNCTION_INVOCATION_FAILED because server.py read os.environ['MONGO_URL'] at import and Vercel has no MONGO_URL. MongoDB is now optional: solar data works with no DB or an unreachable one (cache skipped for 60 s after a failure), and DB endpoints return a clean 503 JSON. Tested iteration_10: backend 56/56, no-DB and unreachable-DB runs on Python 3.12 with only the Vercel deps, calculator 110032 OK. Minor open items: /api/ 'database' reports configuration, not live health; DB endpoints wait 4 s each when the DB is unreachable.
 
 ## Backlog
 - P1: Admin panel to update DISCOM tariffs/FPPAS/policies without code (data currently in versioned JS modules).
 - P1: Verify remaining DISCOMs (BEST, CESC, IPCL, CSPDCL HV-3, NE/UT utilities) and monthly FPPAS/FAC updates.
-- P1: Vercel — awaiting user confirmation of service names, public paths, no-bindings; user must add MONGO_URL/DB_NAME in Vercel and commit frontend/yarn.lock if they want locked installs.
+- P1: Vercel: the user must push to GitHub so Vercel redeploys, and add MONGO_URL/DB_NAME in Vercel for leads and EPC (the solar data works without them).
 - P2: Lender directory: verify solar products for the 9 "ask branch" private banks and RRBs; add more SFBs/co-op banks/SFCs as products are published.
 - P2: Bill OCR, PDF report + WhatsApp share, auth/dashboards, AI advisor.

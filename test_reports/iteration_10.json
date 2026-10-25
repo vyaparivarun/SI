@@ -1,0 +1,27 @@
+{
+  "summary": "Vercel 500 fix: optional MongoDB. Preview regression is 56/56 after fixing 2 outdated unit-test fixtures. Pincodes 110032 (East Delhi, 5/5 sources), 560001, 302001 and 201010 return 200. 12345 returns 422 and 999999 returns 404. No-DB simulation (copy of backend without .env, MONGO_URL/DB_NAME unset, /root/vsim/.venv, port 8099): GET /api/ returns 200 with database:'not configured'; solar 110032 and 560001 return 200 live data (5 sources); POST /api/leads, GET /api/stats, GET /api/leads and EPC return 503 JSON 'Database is not configured on this server.' in about 1 ms. Unreachable-DB simulation (mongodb://10.255.255.1): the first solar request returns 200 in 4.96 s, the next one in 0.68 s (cache skip works); leads, stats and EPC return 503 'Database is temporarily unavailable...' in about 4.0 s each, with no 500s and no hangs. Frontend /calculator: pincode 110032 plus 'Get live solar data' renders the East Delhi card (India Post verified, 5/5 sources, BYPL DISCOM) and shows no 'Couldn't reach' error.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "GET /api/", "issue": "Reports database:'configured' even when the DB cannot be reached. It only checks whether the env vars are set, not whether the DB is healthy. Cosmetic."},
+      {"endpoint": "DB endpoints when the DB cannot be reached", "issue": "Every request waits the full 4 s serverSelectionTimeout because server.py has no 60 s circuit-breaker like solar_service has. Acceptable (clean 503), but each call costs 4 s."}
+    ]
+  },
+  "frontend_issues": {"ui_bugs": [], "integration_issues": [], "design_issues": []},
+  "test_report_links": ["/app/backend/tests/backend_test.py", "/app/backend/tests/test_solar_resource.py", "/app/backend/tests/test_solar_service_unit.py", "/app/backend/tests/vercel_nodb_sim.sh", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Optional: share the _db_down_until skip window with require_db() so DB endpoints fail fast during an outage",
+    "Tell the user to push to GitHub so Vercel redeploys. To enable leads and EPC on Vercel, set MONGO_URL and DB_NAME (Atlas) in the Vercel project env."
+  ],
+  "critical_code_review_comments": [
+    "connect_db() catches client-init errors (for example a malformed URI) and falls back to no-DB mode. Good.",
+    "solar_service cache_get/cache_put now index with db[coll]. The unit-test FakeDB only supported attribute access, and the cache version moved from v3 to v4. Both test fixtures were outdated and I updated them; the app code was correct.",
+    "backend_test.py does not clean up its TEST_ records (it left 9 leads, 4 EPC partners and 4 EPC projects). I deleted them by hand. Consider adding teardown."
+  ],
+  "updated_files": ["/app/backend/tests/test_solar_service_unit.py (FakeDB __getitem__ + reset _db_down_until; stale-cache fixture v:3 -> v:4)", "/app/backend/tests/vercel_nodb_sim.sh (new)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "seed_data_creation": "None. TEST_ records were deleted (leads 9, epc_partners 4, epc_projects 4).",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "Run 'bash /app/backend/tests/vercel_nodb_sim.sh nodb|unreachable' to repeat the Vercel simulations. It starts and kills uvicorn on port 8099 itself. pytest.ini forces -n 2; use -n 0 for serial runs."
+}
