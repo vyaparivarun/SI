@@ -45,7 +45,7 @@ function OMInput({ label, head, onChange, testId }) {
 }
 
 const initialState = {
-  state: "", city: "", discom: "", pincode: "",
+  state: "", city: "", discom: "", pincode: "", autoPin: "",
   businessType: "", billMethod: "bill", monthlyBill: "", monthlyUnits: "", tariff: 8,
   installationType: "Rooftop", roofAreaSqft: "", landAreaAcres: "", shading: "Low",
   panelTech: "TOPCon", panelWattage: 580, useWeather: true,
@@ -68,6 +68,7 @@ export default function Calculator() {
   const [weatherError, setWeatherError] = useState("");
   const upd = (patch) => setF((s) => ({ ...s, ...patch }));
   const reportRef = useRef(null);
+  const weatherReq = useRef(0);
 
   const stateObj = getStateByName(f.state);
   const panelSpec = PANEL_TECH_SPECS[f.panelTech] || PANEL_TECH_SPECS["TOPCon"];
@@ -125,42 +126,68 @@ export default function Calculator() {
     upd({ discom: name, tariff: typeof d?.ciTariff === "number" ? d.ciTariff : "" });
   };
 
-  // Fill state / city / DISCOM from a verified pincode location (never overrides a different chosen state unless asked).
-  const applyLocation = (loc, force = false) => {
-    if (!loc?.state || !getStateByName(loc.state)) return;
-    if (!force && f.state && f.state !== loc.state) return;
-    const sameState = f.state === loc.state;
-    const patch = { state: loc.state, city: (sameState && f.city) || loc.district || f.city || "" };
-    if (!(sameState && f.discom)) {
-      patch.discom = "";
-      const sug = suggestDiscoms(loc.state, loc.districts || []);
-      if (sug.length === 1) {
-        patch.discom = sug[0].name;
-        patch.tariff = typeof sug[0].ciTariff === "number" ? sug[0].ciTariff : "";
+  // A looked-up pincode IS the facility location: it always sets state, city and DISCOM (+ that DISCOM's tariff).
+  const applyLocation = (loc, pin) => {
+    if (!loc?.state || !getStateByName(loc.state)) return false;
+    const sug = suggestDiscoms(loc.state, loc.districts || []);
+    setF((s) => {
+      const patch = { state: loc.state, city: loc.district || "", autoPin: pin || s.autoPin };
+      const keepDiscom = s.state === loc.state && s.discom && sug.some((d) => d.name === s.discom);
+      if (!keepDiscom) {
+        const only = sug.length === 1 ? sug[0] : null;
+        patch.discom = only ? only.name : "";
+        patch.tariff = only && typeof only.ciTariff === "number" ? only.ciTariff : "";
       }
-    }
-    upd(patch);
+      return { ...s, ...patch };
+    });
+    return true;
   };
 
-  const fetchWeather = async () => {
-    const pin = (f.pincode || "").trim();
+  // Lookup failed for a new pincode: drop fields that were auto-filled from the previous pincode.
+  const clearStaleLocation = (pin) => setF((s) => (s.autoPin && s.autoPin !== pin
+    ? { ...s, state: "", city: "", discom: "", tariff: "", autoPin: "" } : s));
+
+  const fetchWeather = async (pinArg) => {
+    const pin = (pinArg ?? f.pincode ?? "").trim();
     if (!pin && !f.city) { setWeatherError("Enter your 6-digit pincode first."); return; }
     if (pin && !/^[1-9][0-9]{5}$/.test(pin)) { setWeather(null); setWeatherError("Please enter a valid 6-digit Indian pincode (e.g. 302001)."); return; }
+    const reqId = ++weatherReq.current;
     setWeatherLoading(true); setWeatherError(""); setWeather(null);
     try {
       const data = await getSolarResource(pin ? { pincode: pin } : { city: f.city, state: f.state });
+      if (reqId !== weatherReq.current) return;
       setWeather(data);
-      applyLocation(data.location);
+      const moved = applyLocation(data.location, pin);
+      if (!moved && pin) clearStaleLocation(pin);
       const live = data.status !== "state_only";
       upd({ useWeather: live });
-      if (live) toast.success(`Solar data loaded for ${data.location?.label || "your location"}`);
+      const where = data.location?.label || "your location";
+      if (live) toast.success(`Solar data loaded for ${where}${moved ? " — state, city & DISCOM updated" : ""}`);
       else toast.message("Exact-location solar data unavailable right now — using the state average.");
     } catch (e) {
+      if (reqId !== weatherReq.current) return;
       const detail = e?.response?.data?.detail;
       setWeatherError(typeof detail === "string" ? detail : "Couldn't reach the solar data service. Please try again shortly.");
+      if (pin) clearStaleLocation(pin);
       upd({ useWeather: false });
-    } finally { setWeatherLoading(false); }
+    } finally {
+      if (reqId === weatherReq.current) setWeatherLoading(false);
+    }
   };
+
+  const onPincodeChange = (raw) => {
+    const pin = raw.replace(/\D/g, "").slice(0, 6);
+    weatherReq.current += 1;
+    upd({ pincode: pin, useWeather: false }); setWeather(null); setWeatherError(""); setWeatherLoading(false);
+    if (pin.length === 6) fetchWeather(pin);
+  };
+
+  // Manual state change: drop the DISCOM and any tariff that was auto-filled from it.
+  const changeState = (state) => setF((s) => {
+    const autoTariff = getDiscomByName(s.discom)?.ciTariff;
+    const tariff = s.discom && String(s.tariff) === String(autoTariff) ? "" : s.tariff;
+    return { ...s, state, discom: "", tariff, autoPin: "" };
+  });
 
   const model = useMemo(() => {
     if (!capacityKw || !annualUnits) return null;
@@ -249,8 +276,8 @@ export default function Calculator() {
                   <div className="space-y-5">
                     <h2 className="font-head font-semibold text-xl text-slate-100">Where is your facility?</h2>
                     <div className="grid sm:grid-cols-2 gap-4">
-                      <Field label="State / UT *"><Select value={f.state} onChange={(e) => upd({ state: e.target.value, discom: "" })} options={STATES.map((s) => s.name)} placeholder="Select state" data-testid="calc-state" /></Field>
-                      <Field label="City *"><TextInput value={f.city} onChange={(e) => upd({ city: e.target.value })} placeholder="e.g. Faridabad" data-testid="calc-city" /></Field>
+                      <Field label="State / UT *"><Select value={f.state} onChange={(e) => changeState(e.target.value)} options={STATES.map((s) => s.name)} placeholder="Select state" data-testid="calc-state" /></Field>
+                      <Field label="City *"><TextInput value={f.city} onChange={(e) => upd({ city: e.target.value, autoPin: "" })} placeholder="e.g. Faridabad" data-testid="calc-city" /></Field>
                     </div>
                     <Field label="Your electricity DISCOM" hint={stateObj ? `${liveSolar && f.useWeather ? "Live" : "State-average"} irradiation: ${irradiation} kWh/m²/day · picking your DISCOM auto-fills its verified tariff` : "Pick your state first"}>
                       <Select value={f.discom} onChange={(e) => pickDiscom(e.target.value)} options={(stateDiscoms.length ? stateDiscoms : DISCOMS).map((d) => d.name)} placeholder="Select DISCOM" data-testid="calc-discom" />
@@ -262,11 +289,11 @@ export default function Calculator() {
                       <div className="grid sm:grid-cols-2 gap-4">
                         <Field label="Pincode" hint="Cross-checks 5 satellite & climate datasets for your exact location">
                           <TextInput value={f.pincode} inputMode="numeric" maxLength={6} placeholder="e.g. 302001" data-testid="calc-pincode"
-                            onChange={(e) => { upd({ pincode: e.target.value.replace(/\D/g, "").slice(0, 6), useWeather: false }); setWeather(null); setWeatherError(""); }}
+                            onChange={(e) => onPincodeChange(e.target.value)}
                             onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); fetchWeather(); } }} />
                         </Field>
                         <Field label={"\u00A0"}>
-                          <Btn type="button" variant="outline" onClick={fetchWeather} disabled={weatherLoading} className="w-full" data-testid="fetch-weather-btn">
+                          <Btn type="button" variant="outline" onClick={() => fetchWeather()} disabled={weatherLoading} className="w-full" data-testid="fetch-weather-btn">
                             {weatherLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Fetching…</> : <><CloudSun className="w-4 h-4" /> Get live solar data</>}
                           </Btn>
                         </Field>
@@ -279,7 +306,7 @@ export default function Calculator() {
                       {weather && (
                         <SolarDataCard data={weather} useLive={f.useWeather} onToggle={(v) => upd({ useWeather: v })}
                           selectedState={f.state} stateAvg={stateObj?.irradiation}
-                          onSwitchState={() => applyLocation(weather.location, true)}
+                          onSwitchState={() => applyLocation(weather.location, f.pincode)}
                           suggestions={discomSuggestions} selectedDiscom={f.discom} onPickDiscom={pickDiscom} />
                       )}
                     </div>
