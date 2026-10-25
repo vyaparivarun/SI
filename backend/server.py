@@ -1,8 +1,11 @@
 from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo.errors import PyMongoError
 import os
+import sys
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
@@ -12,18 +15,44 @@ import random
 from datetime import datetime, timezone
 
 ROOT_DIR = Path(__file__).parent
+sys.path.insert(0, str(ROOT_DIR))
 load_dotenv(ROOT_DIR / '.env')
-
-mongo_url = os.environ['MONGO_URL']
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ['DB_NAME']]
-
-app = FastAPI(title="Solar Intelligence Platform API")
-api_router = APIRouter(prefix="/api")
 
 logging.basicConfig(level=logging.INFO,
                     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+
+def connect_db():
+    """A missing/broken database must never take the solar-data API down with it."""
+    url, name = os.environ.get('MONGO_URL'), os.environ.get('DB_NAME')
+    if not url or not name:
+        logger.error("MONGO_URL / DB_NAME not set: leads & EPC features disabled, solar data runs without cache")
+        return None, None
+    try:
+        mongo = AsyncIOMotorClient(url, serverSelectionTimeoutMS=4000)
+        return mongo, mongo[name]
+    except Exception as e:
+        logger.error(f"MongoDB client init failed: {e!r}")
+        return None, None
+
+
+client, db = connect_db()
+
+app = FastAPI(title="Solar Intelligence Platform API")
+api_router = APIRouter(prefix="/api")
+
+
+def require_db():
+    if db is None:
+        raise HTTPException(status_code=503, detail="Database is not configured on this server.")
+    return db
+
+
+@app.exception_handler(PyMongoError)
+async def mongo_error_handler(request, exc):
+    logger.error(f"MongoDB error on {request.url.path}: {exc!r}")
+    return JSONResponse(status_code=503, content={"detail": "Database is temporarily unavailable. Please try again shortly."})
 
 
 # ----------------------------- Models -----------------------------
@@ -148,7 +177,8 @@ def gen_id(prefix: str) -> str:
 # ----------------------------- Routes -----------------------------
 @api_router.get("/")
 async def root():
-    return {"message": "Solar Intelligence Platform API", "status": "ok"}
+    return {"message": "Solar Intelligence Platform API", "status": "ok",
+            "database": "configured" if db is not None else "not configured"}
 
 
 @api_router.post("/leads", response_model=Lead)
@@ -160,19 +190,19 @@ async def create_lead(payload: LeadCreate):
         intent=intent,
         score=score,
     )
-    await db.leads.insert_one(lead.model_dump())
+    await require_db().leads.insert_one(lead.model_dump())
     return lead
 
 
 @api_router.get("/leads", response_model=List[Lead])
 async def list_leads():
-    docs = await db.leads.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
+    docs = await require_db().leads.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
     return docs
 
 
 @api_router.get("/leads/{lead_id}")
 async def get_lead(lead_id: str):
-    doc = await db.leads.find_one({"leadId": lead_id}, {"_id": 0})
+    doc = await require_db().leads.find_one({"leadId": lead_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Lead not found")
     return doc
@@ -183,14 +213,14 @@ async def register_epc(payload: EPCRegister):
     epc_id = gen_id("SI-EPC")
     doc = {"id": str(uuid.uuid4()), "epcId": epc_id, "status": "Active",
            "createdAt": now_iso(), **payload.model_dump()}
-    await db.epc_partners.insert_one(doc)
+    await require_db().epc_partners.insert_one(doc)
     doc.pop("_id", None)
     return doc
 
 
 @api_router.get("/epc/partners")
 async def list_epc():
-    docs = await db.epc_partners.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
+    docs = await require_db().epc_partners.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
     return docs
 
 
@@ -211,7 +241,7 @@ async def submit_project(payload: EPCProjectCreate):
         "createdAt": now_iso(),
         **payload.model_dump(),
     }
-    await db.epc_projects.insert_one(doc)
+    await require_db().epc_projects.insert_one(doc)
     doc.pop("_id", None)
     # Also create a financing lead
     intent2, score2 = compute_intent(payload.monthlyBill, payload.loanRequirement)
@@ -240,13 +270,13 @@ async def submit_project(payload: EPCProjectCreate):
 @api_router.get("/epc/projects")
 async def list_projects(epcId: Optional[str] = None):
     q = {"epcId": epcId} if epcId else {}
-    docs = await db.epc_projects.find(q, {"_id": 0}).sort("createdAt", -1).to_list(500)
+    docs = await require_db().epc_projects.find(q, {"_id": 0}).sort("createdAt", -1).to_list(500)
     return docs
 
 
 @api_router.get("/epc/projects/{project_id}")
 async def get_project(project_id: str):
-    doc = await db.epc_projects.find_one({"projectId": project_id}, {"_id": 0})
+    doc = await require_db().epc_projects.find_one({"projectId": project_id}, {"_id": 0})
     if not doc:
         raise HTTPException(status_code=404, detail="Project not found")
     return doc
@@ -254,9 +284,10 @@ async def get_project(project_id: str):
 
 @api_router.get("/stats")
 async def platform_stats():
-    leads = await db.leads.count_documents({})
-    projects = await db.epc_projects.count_documents({})
-    partners = await db.epc_partners.count_documents({})
+    d = require_db()
+    leads = await d.leads.count_documents({})
+    projects = await d.epc_projects.count_documents({})
+    partners = await d.epc_partners.count_documents({})
     return {"leads": leads, "projects": projects, "partners": partners}
 
 
@@ -296,4 +327,5 @@ app.add_middleware(
 @app.on_event("shutdown")
 async def shutdown_db_client():
     await solar_service.close_http()
-    client.close()
+    if client is not None:
+        client.close()

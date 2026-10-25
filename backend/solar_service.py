@@ -4,6 +4,7 @@ import calendar
 import logging
 import re
 import statistics
+import time
 import unicodedata
 from collections import Counter
 from datetime import datetime, timezone, timedelta
@@ -203,11 +204,44 @@ async def _first_valid(calls, expect_state):
     return None
 
 
+_db_down_until = 0.0
+
+
+def _db_usable(db) -> bool:
+    return db is not None and time.monotonic() >= _db_down_until
+
+
+def _db_failed(op: str, e: Exception):
+    """Cache is optional: on any DB error skip it for 60 s so live data is never slowed or blocked."""
+    global _db_down_until
+    _db_down_until = time.monotonic() + 60
+    logger.warning(f"cache {op} skipped (database unavailable): {e!r}")
+
+
+async def cache_get(db, coll: str, query: dict):
+    if not _db_usable(db):
+        return None
+    try:
+        return await db[coll].find_one(query, {"_id": 0})
+    except Exception as e:
+        _db_failed("read", e)
+        return None
+
+
+async def cache_put(db, coll: str, query: dict, doc: dict):
+    if not _db_usable(db):
+        return
+    try:
+        await db[coll].update_one(query, {"$set": doc}, upsert=True)
+    except Exception as e:
+        _db_failed("write", e)
+
+
 async def resolve_pincode(db, pin: str) -> dict:
     pin = (pin or "").strip()
     if not PIN_RE.match(pin):
         raise SolarError(422, "Please enter a valid 6-digit Indian pincode (e.g. 302001).")
-    cached = await db.geo_cache.find_one({"key": f"pin:{pin}"}, {"_id": 0})
+    cached = await cache_get(db, "geo_cache", {"key": f"pin:{pin}"})
     if cached and now_utc() - datetime.fromisoformat(cached["fetchedAt"]) < timedelta(days=GEO_DAYS):
         return cached["location"]
 
@@ -247,9 +281,8 @@ async def resolve_pincode(db, pin: str) -> dict:
     if coords:
         loc.update({"lat": round(coords["lat"], 4), "lon": round(coords["lon"], 4),
                     "precision": coords["precision"], "geocoder": coords["geocoder"]})
-        await db.geo_cache.update_one({"key": f"pin:{pin}"},
-                                      {"$set": {"key": f"pin:{pin}", "location": loc, "fetchedAt": now_utc().isoformat()}},
-                                      upsert=True)
+        await cache_put(db, "geo_cache", {"key": f"pin:{pin}"},
+                        {"key": f"pin:{pin}", "location": loc, "fetchedAt": now_utc().isoformat()})
     else:
         loc["precision"] = "state"
     return loc
@@ -447,15 +480,14 @@ async def fetch_solar(lat: float, lon: float):
 async def get_solar(db, lat: float, lon: float):
     """Returns (data, cacheStatus) — prefers fresh cache, then live, then stale cache."""
     key = f"{lat:.2f},{lon:.2f}"
-    cached = await db.solar_cache.find_one({"key": key, "v": 4}, {"_id": 0})
+    cached = await cache_get(db, "solar_cache", {"key": key, "v": 4})
     age = now_utc() - datetime.fromisoformat(cached["fetchedAt"]) if cached else None
     if cached and age < timedelta(days=FRESH_DAYS):
         return cached["data"], "cached"
     live = await fetch_solar(lat, lon)
     if live and live["sourcesUsed"] >= 2:
-        await db.solar_cache.update_one({"key": key, "v": 4},
-                                        {"$set": {"key": key, "v": 4, "data": live, "fetchedAt": live["fetchedAt"]}},
-                                        upsert=True)
+        await cache_put(db, "solar_cache", {"key": key, "v": 4},
+                        {"key": key, "v": 4, "data": live, "fetchedAt": live["fetchedAt"]})
         return live, "live"
     if cached and age < timedelta(days=STALE_DAYS) and cached["data"].get("sourcesUsed", 0) >= 2:
         return cached["data"], "stale"
