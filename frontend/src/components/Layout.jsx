@@ -2,10 +2,21 @@ import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { Menu, X, Sun, ChevronDown, Zap, LogOut } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { firebaseEnabled } from "@/lib/firebase";
 
 function UserMenu({ mobile = false }) {
   const { user, logout } = useAuth() || {};
-  if (!user) return null;
+  const { pathname } = useLocation();
+  if (user === null) return null; // still checking a saved session
+  if (!user) {
+    if (!firebaseEnabled) return null; // no login button until phone login is configured
+    const next = pathname === "/" ? "" : `?next=${encodeURIComponent(pathname)}`;
+    return (
+      <Link to={`/login${next}`} className={mobile ? "block text-center mt-2 px-4 py-3 rounded-lg border border-white/15 text-slate-100 font-semibold" : "px-3 py-2 rounded-lg text-slate-200 hover:text-amber-400 text-[13px] font-semibold"} data-testid={mobile ? "mobile-login-link" : "login-link"}>
+        Log in
+      </Link>
+    );
+  }
   return (
     <div className={`flex items-center gap-2 ${mobile ? "justify-between mt-3 px-1" : "pl-2 ml-1 border-l border-white/10"}`} data-testid={mobile ? "mobile-user-menu" : "user-menu"}>
       <span className="text-xs text-slate-400 max-w-[120px] truncate" data-testid="user-menu-name">Hi, {user.name}</span>

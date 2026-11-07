@@ -2,7 +2,9 @@ import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Btn } from "@/components/ui-kit";
 import { Field, TextInput } from "@/components/Form";
-import { sendOtp, verifyOtp, errMsg } from "@/lib/api";
+import { sendOtp, verifyOtp, firebaseLogin, errMsg } from "@/lib/api";
+import { firebaseEnabled, sendFirebaseOtp, confirmFirebaseOtp, firebaseErrMsg } from "@/lib/firebase";
+import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
 import { Sun, ShieldCheck, Calculator, Landmark, Loader2, ArrowLeft } from "lucide-react";
 
@@ -12,7 +14,10 @@ const PERKS = [
   [ShieldCheck, "Sourced data only", "Tariffs and policies linked to official orders — never guessed."],
 ];
 
-function OtpStep({ phone, name, onBack }) {
+const RECAPTCHA_ID = "recaptcha-container";
+const loginErr = (err) => firebaseErrMsg(err) || errMsg(err);
+
+function OtpStep({ phone, name, confirmation, onResent, onBack }) {
   const { login } = useAuth();
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
@@ -24,13 +29,18 @@ function OtpStep({ phone, name, onBack }) {
     if (!/^\d{4,8}$/.test(code)) { toast.error("Enter the code from the SMS."); return; }
     setBusy(true);
     try {
-      const r = await verifyOtp(phone, name, code);
+      const r = confirmation
+        ? await firebaseLogin(await confirmFirebaseOtp(confirmation, code), name)
+        : await verifyOtp(phone, name, code);
       login(r.token, r.user);
       toast.success(`Welcome, ${r.user.name}!`);
-    } catch (err) { toast.error(errMsg(err)); } finally { setBusy(false); }
+    } catch (err) { toast.error(loginErr(err)); } finally { setBusy(false); }
   };
   const resend = async () => {
-    try { await sendOtp(phone, name); setWait(30); toast.success("New code sent."); } catch (err) { toast.error(errMsg(err)); }
+    try {
+      if (confirmation) onResent(await sendFirebaseOtp(phone, RECAPTCHA_ID)); else await sendOtp(phone, name);
+      setWait(30); toast.success("New code sent.");
+    } catch (err) { toast.error(loginErr(err)); }
   };
 
   return (
@@ -58,8 +68,11 @@ function PhoneStep({ onSent }) {
     if (name.trim().length < 2) { toast.error("Please enter your name."); return; }
     if (!/^[6-9]\d{9}$/.test(phone)) { toast.error("Enter a valid 10-digit mobile number."); return; }
     setBusy(true);
-    try { await sendOtp(phone, name.trim()); onSent(phone, name.trim()); toast.success("OTP sent by SMS."); }
-    catch (err) { toast.error(errMsg(err)); } finally { setBusy(false); }
+    try {
+      const confirmation = firebaseEnabled ? await sendFirebaseOtp(phone, RECAPTCHA_ID) : (await sendOtp(phone, name.trim()), null);
+      onSent(phone, name.trim(), confirmation); toast.success("OTP sent by SMS.");
+    }
+    catch (err) { toast.error(loginErr(err)); } finally { setBusy(false); }
   };
   return (
     <form onSubmit={submit} className="space-y-5" data-testid="login-form">
@@ -80,7 +93,7 @@ function PhoneStep({ onSent }) {
   );
 }
 
-export default function Login() {
+export default function Login({ showBack = false }) {
   const [sent, setSent] = useState(null);
   return (
     <div className="min-h-screen grid lg:grid-cols-[1.1fr_1fr] bg-[#0B1622]" data-testid="login-page">
@@ -102,7 +115,11 @@ export default function Login() {
       <div className="flex items-center justify-center p-6 sm:p-12">
         <div className="w-full max-w-sm">
           <div className="lg:hidden flex items-center gap-2 text-slate-100 font-head font-bold text-lg mb-10"><Sun className="w-6 h-6 text-amber-400" /> Solar Intelligence</div>
-          {sent ? <OtpStep phone={sent.phone} name={sent.name} onBack={() => setSent(null)} /> : <PhoneStep onSent={(phone, name) => setSent({ phone, name })} />}
+          {showBack && <Link to="/" className="text-xs text-slate-400 hover:text-amber-400 inline-flex items-center gap-1 mb-8" data-testid="login-back-to-site"><ArrowLeft className="w-3.5 h-3.5" /> Back to the site</Link>}
+          {sent
+            ? <OtpStep phone={sent.phone} name={sent.name} confirmation={sent.confirmation} onResent={(c) => setSent({ ...sent, confirmation: c })} onBack={() => setSent(null)} />
+            : <PhoneStep onSent={(phone, name, confirmation) => setSent({ phone, name, confirmation })} />}
+          <div id={RECAPTCHA_ID} />
         </div>
       </div>
     </div>
