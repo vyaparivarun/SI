@@ -322,7 +322,10 @@ async def solar_resource(
 
 app.include_router(public_router)
 app.include_router(secured_router)
-app.include_router(api_router, dependencies=[Depends(current_user)])
+# Login gate is opt-in: set REQUIRE_LOGIN=true once MONGO_URL and the Twilio keys are configured.
+# Without it the public calculator and data stay open; account routes (activity, bills, me) still need a token.
+REQUIRE_LOGIN = os.environ.get("REQUIRE_LOGIN", "").lower() == "true"
+app.include_router(api_router, dependencies=[Depends(current_user)] if REQUIRE_LOGIN else [])
 
 app.add_middleware(
     CORSMiddleware,
