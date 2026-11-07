@@ -1,7 +1,12 @@
 import "@/App.css";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { Toaster } from "sonner";
+import { Loader2 } from "lucide-react";
 import Layout from "@/components/Layout";
+import { AuthProvider, useAuth } from "@/lib/auth";
+import Login from "@/pages/Login";
+import Admin from "@/pages/Admin";
+import LoanCalculator from "@/pages/LoanCalculator";
 import Home from "@/pages/Home";
 import Calculator from "@/pages/Calculator";
 import Financing from "@/pages/Financing";
@@ -21,15 +26,18 @@ import EpcPartners from "@/pages/EpcPartners";
 import Resources from "@/pages/Resources";
 import Contact from "@/pages/Contact";
 
-function App() {
+function UserApp() {
+  const { user } = useAuth();
+  if (user === null) {
+    return <div className="min-h-screen flex items-center justify-center bg-[#0B1622]" data-testid="auth-loading"><Loader2 className="w-6 h-6 animate-spin text-amber-400" /></div>;
+  }
+  if (!user) return <Login />;
   return (
-    <div className="App">
-      <BrowserRouter>
-        <Toaster theme="dark" position="top-center" richColors />
-        <Layout>
-          <Routes>
-            <Route path="/" element={<Home />} />
-            <Route path="/calculator" element={<Calculator />} />
+    <Layout>
+      <Routes>
+        <Route path="/" element={<Home />} />
+        <Route path="/calculator" element={<Calculator />} />
+        <Route path="/loan-calculator" element={<LoanCalculator />} />
             <Route path="/financing" element={<Financing />} />
             <Route path="/states" element={<StatesDB />} />
             <Route path="/solar/state/:code" element={<StateDetail />} />
@@ -47,8 +55,22 @@ function App() {
             <Route path="/resources" element={<Resources />} />
             <Route path="/contact" element={<Contact />} />
             <Route path="*" element={<Home />} />
+      </Routes>
+    </Layout>
+  );
+}
+
+function App() {
+  return (
+    <div className="App">
+      <BrowserRouter>
+        <Toaster theme="dark" position="top-center" richColors />
+        <AuthProvider>
+          <Routes>
+            <Route path="/admin" element={<Admin />} />
+            <Route path="*" element={<UserApp />} />
           </Routes>
-        </Layout>
+        </AuthProvider>
       </BrowserRouter>
     </div>
   );

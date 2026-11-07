@@ -1,6 +1,18 @@
 import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Menu, X, Sun, ChevronDown, Zap } from "lucide-react";
+import { Menu, X, Sun, ChevronDown, Zap, LogOut } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+
+function UserMenu({ mobile = false }) {
+  const { user, logout } = useAuth() || {};
+  if (!user) return null;
+  return (
+    <div className={`flex items-center gap-2 ${mobile ? "justify-between mt-3 px-1" : "pl-2 ml-1 border-l border-white/10"}`} data-testid={mobile ? "mobile-user-menu" : "user-menu"}>
+      <span className="text-xs text-slate-400 max-w-[120px] truncate" data-testid="user-menu-name">Hi, {user.name}</span>
+      <button type="button" onClick={logout} className="p-2 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-white/[0.04]" aria-label="Log out" data-testid={mobile ? "mobile-logout-btn" : "logout-btn"}><LogOut className="w-4 h-4" /></button>
+    </div>
+  );
+}
 
 export const NAV = [
   {
@@ -44,6 +56,7 @@ export const NAV = [
     href: "/calculator",
     items: [
       { label: "Solar Savings Calculator", href: "/calculator" },
+      { label: "Loan & Lease EMI Calculator", href: "/loan-calculator" },
       { label: "Financing / EMI Calculator", href: "/financing#calculator" },
       { label: "REC Calculator", href: "/rec-carbon#calculator" },
     ],
@@ -149,9 +162,13 @@ const Header = () => {
         </nav>
 
         <div className="hidden xl:flex items-center gap-2 shrink-0">
+          <Link to="/loan-calculator" className="px-3 py-2 rounded-lg border border-white/15 hover:border-amber-500/60 text-slate-200 text-[13px] font-semibold transition-colors" data-testid="header-cta-loan">
+            Loan & Lease EMI
+          </Link>
           <Link to="/calculator" className="px-4 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 text-[13px] font-bold transition-colors active:scale-[0.98]" data-testid="header-cta-calculator">
             Calculate Savings
           </Link>
+          <UserMenu />
         </div>
 
         <button className="xl:hidden p-2 text-slate-200" onClick={() => setMobileOpen(!mobileOpen)} data-testid="mobile-menu-toggle" aria-label="Menu">
@@ -180,6 +197,10 @@ const Header = () => {
             <Link to="/calculator" onClick={() => setMobileOpen(false)} className="block text-center mt-3 px-4 py-3 rounded-lg bg-amber-500 text-slate-950 font-bold" data-testid="mobile-cta-calculator">
               Calculate My Solar Savings
             </Link>
+            <Link to="/loan-calculator" onClick={() => setMobileOpen(false)} className="block text-center mt-2 px-4 py-3 rounded-lg border border-white/15 text-slate-100 font-semibold" data-testid="mobile-cta-loan">
+              Loan & Lease EMI Calculator
+            </Link>
+            <UserMenu mobile />
           </div>
         </div>
       )}

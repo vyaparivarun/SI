@@ -18,20 +18,29 @@ import {
   calculateFinancingPackage, calculateFlatRateEMI, calculateLease,
 } from "@/lib/engine";
 import { getTariffTrend, buildTariffHistory, TARIFF_TREND_META, topTariffRisers } from "@/data/tariffHistory";
-import { createLead, getSolarResource } from "@/lib/api";
+import { createLead, getSolarResource, saveActivity } from "@/lib/api";
+import { BillUpload } from "@/components/BillUpload";
 import { inr, inrCompact, kw, kwh, num, pct, yrs } from "@/lib/format";
 import {
   MapPin, Receipt, Sun, Wallet, ArrowRight, ArrowLeft, Sparkles,
   TrendingUp, Leaf, Award, IndianRupee, CheckCircle2, Printer, Gauge, BarChart3,
-  Zap, Ruler, Building2, MoveRight, HelpCircle, CloudSun, Loader2, Cpu,
+  Zap, Ruler, Building2, MoveRight, HelpCircle, CloudSun, Loader2, Cpu, ChevronDown,
 } from "lucide-react";
 
-const STEPS = [
-  { id: 1, label: "Location", icon: MapPin },
-  { id: 2, label: "Business & Bill", icon: Receipt },
-  { id: 3, label: "Solar Area", icon: Ruler },
-  { id: 4, label: "Financing", icon: Wallet },
-];
+function AdvSection({ id, title, sub, open, onToggle, children }) {
+  return (
+    <div className="border-t border-white/10 first:border-t-0" data-testid={`adv-${id}`}>
+      <button type="button" onClick={() => onToggle(open ? null : id)} className="w-full flex items-center justify-between gap-3 py-4 text-left group" data-testid={`adv-toggle-${id}`}>
+        <div>
+          <div className="font-head font-semibold text-slate-100 group-hover:text-amber-300 transition-colors">{title}</div>
+          {sub && <div className="text-xs text-slate-500 mt-0.5">{sub}</div>}
+        </div>
+        <ChevronDown className={`w-5 h-5 text-slate-500 shrink-0 transition-transform ${open ? "rotate-180" : ""}`} />
+      </button>
+      {open && <div className="pb-6">{children}</div>}
+    </div>
+  );
+}
 
 const SHADE_LOSS = { Low: 0.02, Medium: 0.06, High: 0.12 };
 
@@ -46,9 +55,9 @@ function OMInput({ label, head, onChange, testId }) {
 
 const initialState = {
   state: "", city: "", discom: "", pincode: "", autoPin: "",
-  businessType: "", billMethod: "bill", monthlyBill: "", monthlyUnits: "", tariff: 8,
+  businessType: "", billMethod: "bill", monthlyBill: "", monthlyUnits: "", tariff: "",
   installationType: "Rooftop", roofAreaSqft: "", landAreaAcres: "", shading: "Low",
-  panelTech: "TOPCon", panelWattage: 580, useWeather: true,
+  panelTech: "TOPCon", panelWattage: 580, unitsPerPanel: "", useWeather: true,
   autoSize: true, capacityKw: "", ratePerWatt: "",
   tariffEscalation: 5, financingPct: 80, interestRate: DEFAULTS.interestRate, tenureYears: DEFAULTS.tenureYears,
   amc: { val: 0.5, unit: "pctCost" }, cmc: { val: 0, unit: "pctCost" },
@@ -57,7 +66,7 @@ const initialState = {
 };
 
 export default function Calculator() {
-  const [step, setStep] = useState(1);
+  const [openAdv, setOpenAdv] = useState(null);
   const [f, setF] = useState(initialState);
   const [showResults, setShowResults] = useState(false);
   const [stepError, setStepError] = useState("");
@@ -76,7 +85,14 @@ export default function Calculator() {
   const degradationYr = panelSpec.degradationYr;
   const baseIrradiation = stateObj?.irradiation || 5.2;
   const liveSolar = weather && weather.status !== "state_only" && weather.avgDailyGHI ? weather : null;
-  const irradiation = (f.useWeather && liveSolar) ? liveSolar.avgDailyGHI : baseIrradiation;
+  const autoIrradiation = (f.useWeather && liveSolar) ? liveSolar.avgDailyGHI : baseIrradiation;
+  const shadingLoss = SHADE_LOSS[f.shading] ?? 0.03;
+  const panelKw = (Number(f.panelWattage) || 580) / 1000;
+  const yieldFactor = performanceRatio * (1 - shadingLoss) * DEFAULTS.availability;
+  const defaultUnitsPerPanel = panelKw * autoIrradiation * yieldFactor;
+  // Customer / EPC override of units per panel per day drives the whole generation model.
+  const unitsPerPanelOverride = Number(f.unitsPerPanel) || 0;
+  const irradiation = unitsPerPanelOverride > 0 ? unitsPerPanelOverride / (panelKw * yieldFactor) : autoIrradiation;
   const discomSuggestions = weather?.location?.state ? suggestDiscoms(weather.location.state, weather.location.districts || []) : [];
   const stateDiscoms = f.state ? getDiscomsByState(f.state) : [];
   const selectedDiscom = f.discom ? getDiscomByName(f.discom) : null;
@@ -94,7 +110,6 @@ export default function Calculator() {
   const effectiveTariff = tariffNum;
 
   // ---------- Area-driven sizing ----------
-  const shadingLoss = SHADE_LOSS[f.shading] ?? 0.03;
   const specificYield = irradiation * 365 * performanceRatio * (1 - shadingLoss) * DEFAULTS.availability;
   const fullKw = fullBillCapacityKw({ annualUnits, specificYield, selfConsumption: DEFAULTS.selfConsumption });
   const areaNeed = areaForCapacity(fullKw);
@@ -216,24 +231,26 @@ export default function Calculator() {
     toast.success("Set to area needed for ~100% coverage");
   };
 
-  const canProceed = () => {
-    if (step === 1) return f.state && f.city;
-    if (step === 2) return (f.billMethod === "bill" ? f.monthlyBill : f.monthlyUnits) && f.tariff;
-    return true;
-  };
-
-  const next = () => {
-    const msg = step === 1 ? "Please select a State and enter a City."
-      : step === 2 ? "Please enter your monthly bill (or units) and average tariff."
-      : "";
-    if (!canProceed()) { setStepError(msg); toast.error(msg); return; }
+  const calculate = () => {
+    const billOk = f.billMethod === "bill" ? Number(f.monthlyBill) > 0 : Number(f.monthlyUnits) > 0;
+    const msg = !f.state ? "Enter your 6-digit pincode (or pick your state under Location & DISCOM)."
+      : !billOk ? "Enter your average monthly electricity bill."
+      : !tariffNum ? "Enter your tariff (₹/kWh) — we don't have a verified rate for this DISCOM."
+      : !model ? "We couldn't size a plant from these inputs — check the numbers under Advanced." : "";
+    if (msg) { setStepError(msg); toast.error(msg); return; }
     setStepError("");
-    if (step < 4) setStep(step + 1);
-    else {
-      if (!model) { setStepError("Enter bill details to calculate."); return; }
-      setShowResults(true);
-      setTimeout(() => reportRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
-    }
+    setShowResults(true);
+    const m = model.metrics;
+    saveActivity("savings_calc", `${f.city || f.state} · ${f.pincode || "no pincode"}`, {
+      pincode: f.pincode, state: f.state, city: f.city, discom: f.discom, tariff: tariffNum, billMethod: f.billMethod,
+      monthlyBill: f.monthlyBill, monthlyUnits: f.monthlyUnits, roofAreaSqft: f.roofAreaSqft, landAreaAcres: f.landAreaAcres,
+      panelTech: f.panelTech, panelWattage: f.panelWattage, unitsPerPanel: f.unitsPerPanel, financingPct: f.financingPct,
+      interestRate: f.interestRate, tenureYears: f.tenureYears,
+    }, {
+      capacityKw, projectCost: Math.round(projectCostEst), monthlySaving: Math.round(m.netMonthlyBenefit),
+      monthlyEMI: Math.round(m.monthlyEMI), payback: m.simplePayback, monthlyBill: Math.round(monthlyBill), state: f.state, discom: f.discom,
+    }).catch(() => {});
+    setTimeout(() => reportRef.current?.scrollIntoView({ behavior: "smooth" }), 100);
   };
 
   return (
@@ -244,7 +261,7 @@ export default function Calculator() {
             <div>
               <div className="inline-flex items-center gap-2 text-[11px] font-mono uppercase tracking-[0.18em] text-amber-500 mb-2"><span className="w-6 h-px bg-amber-500/60" />Solar Savings Calculator</div>
               <h1 className="font-head text-2xl lg:text-3xl font-extrabold text-slate-50">See how much you can save every month</h1>
-              <p className="text-sm text-slate-500 mt-1">Just 4 quick steps — we fill in the technical details for you.</p>
+              <p className="text-sm text-slate-500 mt-1">Enter your pincode and monthly bill — we fetch your state, DISCOM, tariff and local sunlight automatically.</p>
             </div>
             <Btn variant="outline" onClick={loadDemo} data-testid="load-demo-btn"><Sparkles className="w-4 h-4" /> Load demo data</Btn>
           </div>
@@ -253,28 +270,63 @@ export default function Calculator() {
 
       {!showResults && (
         <Section className="py-8">
-          {/* Progress */}
-          <div className="flex items-center gap-1 mb-8 overflow-x-auto nav-scroll pb-2">
-            {STEPS.map((s, i) => (
-              <React.Fragment key={s.id}>
-                <button onClick={() => s.id <= step && setStep(s.id)} className={`flex items-center gap-2 px-3 py-2 rounded-lg shrink-0 transition-colors ${step === s.id ? "bg-amber-500/10 border border-amber-500/30" : step > s.id ? "opacity-80" : "opacity-40"}`} data-testid={`step-tab-${s.id}`}>
-                  <div className={`w-7 h-7 rounded-full flex items-center justify-center ${step >= s.id ? "bg-amber-500 text-slate-950" : "bg-slate-800 text-slate-500"}`}>
-                    {step > s.id ? <CheckCircle2 className="w-4 h-4" /> : <s.icon className="w-4 h-4" />}
-                  </div>
-                  <span className={`text-xs font-medium ${step === s.id ? "text-amber-400" : "text-slate-400"}`}>{s.label}</span>
-                </button>
-                {i < STEPS.length - 1 && <div className="w-4 h-px bg-slate-700 shrink-0" />}
-              </React.Fragment>
-            ))}
-          </div>
-
           <div className="grid lg:grid-cols-3 gap-6">
             <div className="lg:col-span-2">
-              <Card className="min-h-[440px]">
-                {/* STEP 1 — LOCATION */}
-                {step === 1 && (
+              <Card className="mb-6 border-amber-500/25" data-testid="quick-start">
+                <h2 className="font-head font-semibold text-xl text-slate-100">Two details. That's it.</h2>
+                <p className="text-sm text-slate-500 mt-1 mb-5">Everything else uses verified data and industry averages — you can fine-tune it below.</p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <Field label="Facility pincode *" hint={weatherLoading ? "Looking up your location…" : "Detected automatically when you type 6 digits"}>
+                    <div className="relative">
+                      <TextInput value={f.pincode} inputMode="numeric" maxLength={6} placeholder="e.g. 302001" data-testid="calc-pincode"
+                        onChange={(e) => onPincodeChange(e.target.value)}
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); fetchWeather(); } }} />
+                      {weatherLoading && <Loader2 className="w-4 h-4 animate-spin text-amber-400 absolute right-3 top-1/2 -translate-y-1/2" data-testid="pincode-loading" />}
+                    </div>
+                  </Field>
+                  {f.billMethod === "bill"
+                    ? <Field label="Average monthly bill (₹) *" hint={<button type="button" className="text-amber-400 hover:text-amber-300" onClick={() => upd({ billMethod: "units" })} data-testid="switch-to-units">I know my units (kWh) instead</button>}><NumberInput prefix="₹" value={f.monthlyBill} onChange={(e) => upd({ monthlyBill: e.target.value })} placeholder="100000" data-testid="calc-bill" /></Field>
+                    : <Field label="Average monthly units (kWh) *" hint={<button type="button" className="text-amber-400 hover:text-amber-300" onClick={() => upd({ billMethod: "bill" })} data-testid="switch-to-bill">I know my bill amount (₹) instead</button>}><NumberInput value={f.monthlyUnits} onChange={(e) => upd({ monthlyUnits: e.target.value })} suffix="kWh" placeholder="100000" data-testid="calc-units" /></Field>}
+                </div>
+                {weatherError && (
+                  <div className="mt-3 text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2" data-testid="weather-error">
+                    {weatherError}{stateObj ? ` The calculator is using the ${f.state} state average (${stateObj.irradiation} kWh/m²/day) meanwhile.` : " Pick your state under Location & DISCOM to continue."}
+                  </div>
+                )}
+                {f.state && (
+                  <div className="mt-5 grid grid-cols-2 sm:grid-cols-4 gap-2" data-testid="auto-detected">
+                    {[["State", f.state, "loc"], ["City", f.city || "Add city", "loc"], ["DISCOM", f.discom || (discomSuggestions.length > 1 ? "Pick yours below" : "Select"), "loc"], ["Tariff", tariffNum ? `₹${tariffNum}/kWh` : "Enter rate", "bill"]].map(([k, v, sec]) => (
+                      <button key={k} type="button" onClick={() => setOpenAdv(sec)} className="text-left p-3 rounded-lg bg-white/[0.03] border border-white/10 hover:border-amber-500/40 transition-colors min-w-0" data-testid={`auto-${k.toLowerCase()}`}>
+                        <div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">{k}</div>
+                        <div className="text-sm text-slate-100 font-semibold truncate">{v}</div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {f.state && !tariffNum && (
+                  <div className="mt-4 max-w-xs">
+                    <Field label="Your tariff (₹/kWh) *" hint={f.discom ? `${f.discom}'s rate isn't verified yet — use your bill's total ₹ ÷ units.` : "Pick your DISCOM below, or enter your bill's total ₹ ÷ units."}>
+                      <NumberInput prefix="₹" value={f.tariff} onChange={(e) => upd({ tariff: e.target.value })} suffix="/kWh" data-testid="quick-tariff" />
+                    </Field>
+                  </div>
+                )}
+                {weather && (
+                  <SolarDataCard data={weather} useLive={f.useWeather} onToggle={(v) => upd({ useWeather: v })}
+                    selectedState={f.state} stateAvg={stateObj?.irradiation}
+                    onSwitchState={() => applyLocation(weather.location, f.pincode)}
+                    suggestions={discomSuggestions} selectedDiscom={f.discom} onPickDiscom={pickDiscom} />
+                )}
+                <div className="mt-6 flex flex-wrap items-center justify-between gap-4">
+                  <BillUpload />
+                  <Btn onClick={calculate} data-testid="calc-calculate-btn">See my monthly saving <ArrowRight className="w-4 h-4" /></Btn>
+                </div>
+                {stepError && <div className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2.5" data-testid="calc-step-error">{stepError}</div>}
+              </Card>
+
+              <div className="text-xs uppercase tracking-wider text-slate-500 font-mono mb-3">Advanced (optional) — pre-filled with verified data & industry averages</div>
+              <Card className="!py-1" data-testid="advanced-card">
+                <AdvSection id="loc" title="Location & DISCOM" sub={f.state ? `${f.city || "—"}, ${f.state} · ${f.discom || "DISCOM not set"}` : "Filled from your pincode"} open={openAdv === "loc"} onToggle={setOpenAdv}>{(
                   <div className="space-y-5">
-                    <h2 className="font-head font-semibold text-xl text-slate-100">Where is your facility?</h2>
                     <div className="grid sm:grid-cols-2 gap-4">
                       <Field label="State / UT *"><Select value={f.state} onChange={(e) => changeState(e.target.value)} options={STATES.map((s) => s.name)} placeholder="Select state" data-testid="calc-state" /></Field>
                       <Field label="City *"><TextInput value={f.city} onChange={(e) => upd({ city: e.target.value, autoPin: "" })} placeholder="e.g. Faridabad" data-testid="calc-city" /></Field>
@@ -283,46 +335,13 @@ export default function Calculator() {
                       <Select value={f.discom} onChange={(e) => pickDiscom(e.target.value)} options={(stateDiscoms.length ? stateDiscoms : DISCOMS).map((d) => d.name)} placeholder="Select DISCOM" data-testid="calc-discom" />
                     </Field>
                     {selectedDiscom && <DiscomTariffNote d={selectedDiscom} />}
-
-                    <div className="pt-3 border-t border-white/10">
-                      <div className="text-xs uppercase tracking-wider text-slate-500 font-mono mb-3 flex items-center gap-1.5"><CloudSun className="w-3.5 h-3.5 text-amber-400" /> Live solar data (optional, recommended)</div>
-                      <div className="grid sm:grid-cols-2 gap-4">
-                        <Field label="Pincode" hint="Cross-checks 5 satellite & climate datasets for your exact location">
-                          <TextInput value={f.pincode} inputMode="numeric" maxLength={6} placeholder="e.g. 302001" data-testid="calc-pincode"
-                            onChange={(e) => onPincodeChange(e.target.value)}
-                            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); fetchWeather(); } }} />
-                        </Field>
-                        <Field label={"\u00A0"}>
-                          <Btn type="button" variant="outline" onClick={() => fetchWeather()} disabled={weatherLoading} className="w-full" data-testid="fetch-weather-btn">
-                            {weatherLoading ? <><Loader2 className="w-4 h-4 animate-spin" /> Fetching…</> : <><CloudSun className="w-4 h-4" /> Get live solar data</>}
-                          </Btn>
-                        </Field>
-                      </div>
-                      {weatherError && (
-                        <div className="mt-3 text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2" data-testid="weather-error">
-                          {weatherError}{stateObj ? ` The calculator is using the ${f.state} state average (${stateObj.irradiation} kWh/m²/day) meanwhile.` : ""}
-                        </div>
-                      )}
-                      {weather && (
-                        <SolarDataCard data={weather} useLive={f.useWeather} onToggle={(v) => upd({ useWeather: v })}
-                          selectedState={f.state} stateAvg={stateObj?.irradiation}
-                          onSwitchState={() => applyLocation(weather.location, f.pincode)}
-                          suggestions={discomSuggestions} selectedDiscom={f.discom} onPickDiscom={pickDiscom} />
-                      )}
-                    </div>
                   </div>
-                )}
+                )}</AdvSection>
 
-                {/* STEP 2 — BUSINESS & BILL */}
-                {step === 2 && (
+                <AdvSection id="bill" title="Tariff & business type" sub={tariffNum ? `₹${tariffNum}/kWh` : "Tariff needed"} open={openAdv === "bill"} onToggle={setOpenAdv}>{(
                   <div className="space-y-5">
-                    <h2 className="font-head font-semibold text-xl text-slate-100">Your electricity bill</h2>
                     <Field label="Business type"><Select value={f.businessType} onChange={(e) => upd({ businessType: e.target.value })} options={BUSINESS_TYPES} placeholder="Select" data-testid="calc-business" /></Field>
-                    <Segmented options={[{ value: "bill", label: "I know my monthly bill (₹)" }, { value: "units", label: "I know my monthly units (kWh)" }]} value={f.billMethod} onChange={(v) => upd({ billMethod: v })} testId="calc-billmethod" />
                     <div className="grid sm:grid-cols-2 gap-4">
-                      {f.billMethod === "bill"
-                        ? <Field label="Average monthly bill (₹) *"><NumberInput prefix="₹" value={f.monthlyBill} onChange={(e) => upd({ monthlyBill: e.target.value })} placeholder="100000" data-testid="calc-bill" /></Field>
-                        : <Field label="Average monthly units (kWh) *"><NumberInput value={f.monthlyUnits} onChange={(e) => upd({ monthlyUnits: e.target.value })} suffix="kWh" placeholder="100000" data-testid="calc-units" /></Field>}
                       <Field label="Your tariff (₹/kWh) *" hint={selectedDiscom ? (typeof selectedDiscom.ciTariff === "number" ? `Auto-filled from ${f.discom} (verified ${selectedDiscom.lastVerified}). Replace with your bill's average rate if you know it.` : `${f.discom}'s tariff isn't verified yet — enter your bill's average rate (total ₹ ÷ units).`) : (stateTariffRange(f.state) ? `Verified HT rates in ${f.state}: ${stateTariffRange(f.state)}` : "Enter your bill's average rate (total ₹ ÷ units).")}>
                         <NumberInput prefix="₹" value={f.tariff} onChange={(e) => upd({ tariff: e.target.value })} suffix="/kWh" data-testid="calc-tariff" />
                       </Field>
@@ -333,12 +352,10 @@ export default function Calculator() {
                       </div>
                     )}
                   </div>
-                )}
+                )}</AdvSection>
 
-                {/* STEP 3 — AREA */}
-                {step === 3 && (
+                <AdvSection id="area" title="Roof area, panels & units per panel" sub={`${f.panelWattage} Wp ${f.panelTech} · ${(unitsPerPanelOverride || defaultUnitsPerPanel).toFixed(2)} units/panel/day${unitsPerPanelOverride ? " (your figure)" : " (industry average)"}`} open={openAdv === "area"} onToggle={setOpenAdv}>{(
                   <div className="space-y-5">
-                    <h2 className="font-head font-semibold text-xl text-slate-100">How much area do you have?</h2>
 
                     {fullKw > 0 && (
                       <div className="p-4 rounded-lg bg-amber-500/5 border border-amber-500/20">
@@ -362,6 +379,9 @@ export default function Calculator() {
                       <div className="grid sm:grid-cols-2 gap-4">
                         <Field label="Panel technology" hint={panelSpec.note}><Select value={f.panelTech} onChange={(e) => upd({ panelTech: e.target.value })} options={Object.keys(PANEL_TECH_SPECS)} data-testid="calc-paneltech" /></Field>
                         <Field label="Panel wattage (Wp)"><Select value={String(f.panelWattage)} onChange={(e) => upd({ panelWattage: Number(e.target.value) })} options={PANEL_WATTAGES.map((w) => ({ value: String(w), label: `${w} Wp` }))} data-testid="calc-panelwattage" /></Field>
+                        <Field label="Units per panel per day (kWh)" hint={`Industry thumb rule here: ${defaultUnitsPerPanel.toFixed(2)}. Enter your EPC's figure to override, or leave empty.`}>
+                          <NumberInput value={f.unitsPerPanel} onChange={(e) => upd({ unitsPerPanel: e.target.value })} placeholder={defaultUnitsPerPanel.toFixed(2)} suffix="kWh/day" data-testid="calc-units-per-panel" />
+                        </Field>
                       </div>
                       {capacityKw > 0 && (
                         <div className="mt-3 p-3.5 rounded-lg bg-blue-500/5 border border-blue-500/15 text-sm text-slate-300" data-testid="panel-readout">
@@ -389,12 +409,11 @@ export default function Calculator() {
                       </div>
                     </div>
                   </div>
-                )}
+                )}</AdvSection>
 
-                {/* STEP 4 — FINANCING */}
-                {step === 4 && (
+                <AdvSection id="finance" title="Financing & yearly charges" sub={`${f.financingPct}% financed at ${f.interestRate}% for ${f.tenureYears} yrs`} open={openAdv === "finance"} onToggle={setOpenAdv}>{(
                   <div className="space-y-5">
-                    <h2 className="font-head font-semibold text-xl text-slate-100">Financing (indicative marketplace defaults)</h2>
+                    <p className="text-xs text-slate-500">Need to compare reducing vs flat interest vs lease with fees and GST? Use the <Link to="/loan-calculator" className="text-amber-400 underline underline-offset-2" data-testid="calc-loan-link">Loan & Lease EMI calculator</Link>.</p>
                     <div className="grid sm:grid-cols-3 gap-4">
                       <div className="p-4 rounded-lg bg-white/[0.03] border border-white/10"><div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Financing share</div><div className="num text-xl font-bold text-amber-400">{f.financingPct}%</div></div>
                       <div className="p-4 rounded-lg bg-white/[0.03] border border-white/10"><div className="text-[10px] uppercase tracking-wider text-slate-500 font-mono">Interest rate</div><div className="num text-xl font-bold text-amber-400">{f.interestRate}%</div></div>
@@ -436,13 +455,7 @@ export default function Calculator() {
                     </div>
                     <Disclaimer>Financing figures are indicative and subject to the financing partner's credit assessment, applicable terms and approval.</Disclaimer>
                   </div>
-                )}
-
-                <div className="flex justify-between mt-8 pt-6 border-t border-white/10">
-                  <Btn variant="ghost" onClick={() => setStep(Math.max(1, step - 1))} disabled={step === 1}><ArrowLeft className="w-4 h-4" /> Back</Btn>
-                  <Btn onClick={next} data-testid="calc-next-btn">{step === 4 ? "See My Monthly Saving" : "Continue"} <ArrowRight className="w-4 h-4" /></Btn>
-                </div>
-                {stepError && <div className="mt-3 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3.5 py-2.5" data-testid="calc-step-error">{stepError}</div>}
+                )}</AdvSection>
               </Card>
             </div>
 
@@ -467,7 +480,7 @@ export default function Calculator() {
       {!showResults && model && (
         <div className="lg:hidden fixed bottom-0 inset-x-0 z-40 glass border-t border-white/10 p-3 flex items-center justify-between no-print">
           <div><div className="text-[10px] text-slate-500 font-mono uppercase">Est. Monthly Saving</div><div className="num text-lg font-bold text-emerald-400">{inr(model.metrics.netMonthlyBenefit)}</div></div>
-          <Btn onClick={next} className="!py-2">{step === 4 ? "Calculate" : "Next"} <ArrowRight className="w-4 h-4" /></Btn>
+          <Btn onClick={calculate} className="!py-2" data-testid="mobile-calculate-btn">Calculate <ArrowRight className="w-4 h-4" /></Btn>
         </div>
       )}
 

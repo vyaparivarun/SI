@@ -1,4 +1,4 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, Depends
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -175,14 +175,19 @@ def gen_id(prefix: str) -> str:
 
 
 # ----------------------------- Routes -----------------------------
-@api_router.get("/")
+from auth_routes import build_routers  # noqa: E402
+
+public_router, secured_router, current_user, current_admin = build_routers(require_db)
+
+
+@public_router.get("/")
 async def root():
     return {"message": "Solar Intelligence Platform API", "status": "ok",
             "database": "configured" if db is not None else "not configured"}
 
 
 @api_router.post("/leads", response_model=Lead)
-async def create_lead(payload: LeadCreate):
+async def create_lead(payload: LeadCreate, user=Depends(current_user)):
     intent, score = compute_intent(payload.monthlyBill, payload.loanRequirement)
     lead = Lead(
         **payload.model_dump(),
@@ -190,12 +195,14 @@ async def create_lead(payload: LeadCreate):
         intent=intent,
         score=score,
     )
-    await require_db().leads.insert_one(lead.model_dump())
+    doc = lead.model_dump()
+    doc["userId"] = user.get("id")
+    await require_db().leads.insert_one(doc)
     return lead
 
 
 @api_router.get("/leads", response_model=List[Lead])
-async def list_leads():
+async def list_leads(_=Depends(current_admin)):
     docs = await require_db().leads.find({}, {"_id": 0}).sort("createdAt", -1).to_list(500)
     return docs
 
@@ -313,7 +320,9 @@ async def solar_resource(
         raise HTTPException(status_code=503, detail="Live solar data is temporarily unavailable. Please try again in a minute.")
 
 
-app.include_router(api_router)
+app.include_router(public_router)
+app.include_router(secured_router)
+app.include_router(api_router, dependencies=[Depends(current_user)])
 
 app.add_middleware(
     CORSMiddleware,
