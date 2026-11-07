@@ -1,4 +1,4 @@
-"""Phone-OTP login (Twilio Verify), admin login, per-user activity + bill storage, admin panel APIs."""
+"""Phone-OTP login (Firebase Phone Auth, or Twilio Verify as a fallback), admin login, per-user activity + bill storage, admin panel APIs."""
 import os
 import re
 import uuid
@@ -84,6 +84,63 @@ async def twilio_post(path: str, data: dict) -> dict:
     return r.json()
 
 
+# ---------------- Firebase phone auth ----------------
+# The browser signs in with Firebase (Firebase sends the SMS), then posts the Firebase ID token here.
+# We verify it against Google's public keys and issue our own session token; users stay in MongoDB.
+FIREBASE_CERTS_URL = "https://www.googleapis.com/robot/v1/metadata/x509/securetoken@system.gserviceaccount.com"
+_fb_certs: Dict[str, Any] = {"keys": {}, "exp": 0.0}
+
+
+def firebase_project() -> str:
+    pid = (os.environ.get("FIREBASE_PROJECT_ID") or "").strip()
+    if not pid:
+        raise HTTPException(503, "Login isn't switched on yet (FIREBASE_PROJECT_ID missing).")
+    return pid
+
+
+async def firebase_keys() -> Dict[str, Any]:
+    import time
+    from cryptography.x509 import load_pem_x509_certificate
+    if _fb_certs["keys"] and time.time() < _fb_certs["exp"]:
+        return _fb_certs["keys"]
+    try:
+        async with httpx.AsyncClient(timeout=10) as c:
+            r = await c.get(FIREBASE_CERTS_URL)
+        r.raise_for_status()
+    except httpx.HTTPError:
+        if _fb_certs["keys"]:
+            return _fb_certs["keys"]
+        raise HTTPException(503, "Couldn't reach the login service. Please try again in a minute.")
+    m = re.search(r"max-age=(\d+)", r.headers.get("cache-control", ""))
+    _fb_certs["keys"] = {kid: load_pem_x509_certificate(pem.encode()).public_key() for kid, pem in r.json().items()}
+    _fb_certs["exp"] = time.time() + (int(m.group(1)) if m else 3600)
+    return _fb_certs["keys"]
+
+
+async def verify_firebase_token(id_token: str) -> dict:
+    pid = firebase_project()
+    try:
+        kid = jwt.get_unverified_header(id_token).get("kid")
+    except jwt.PyJWTError:
+        raise HTTPException(401, "Login failed. Please try again.")
+    key = (await firebase_keys()).get(kid)
+    if key is None:
+        _fb_certs["exp"] = 0  # keys may have rotated: refetch once
+        key = (await firebase_keys()).get(kid)
+    if key is None:
+        raise HTTPException(401, "Login failed. Please try again.")
+    try:
+        claims = jwt.decode(id_token, key, algorithms=["RS256"], audience=pid,
+                            issuer=f"https://securetoken.google.com/{pid}", leeway=60)
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(401, "Your login code expired. Please request a new one.")
+    except jwt.PyJWTError:
+        raise HTTPException(401, "Login failed. Please try again.")
+    if not claims.get("sub") or not claims.get("phone_number"):
+        raise HTTPException(401, "This login has no verified mobile number.")
+    return claims
+
+
 def bearer(request: Request) -> Optional[dict]:
     h = request.headers.get("Authorization", "")
     if not h.startswith("Bearer "):
@@ -121,6 +178,11 @@ class VerifyOtpIn(SendOtpIn):
     code: str = Field(min_length=4, max_length=8)
 
 
+class FirebaseLoginIn(BaseModel):
+    idToken: str = Field(min_length=20, max_length=4096)
+    name: str = Field(min_length=2, max_length=80)
+
+
 class AdminLoginIn(BaseModel):
     email: str
     password: str
@@ -131,6 +193,19 @@ class ActivityIn(BaseModel):
     title: str = Field(default="", max_length=160)
     inputs: Dict[str, Any] = {}
     summary: Dict[str, Any] = {}
+
+
+async def upsert_user(db, phone: str, name: str, firebase_uid: Optional[str] = None) -> dict:
+    extra = {"firebaseUid": firebase_uid} if firebase_uid else {}
+    existing = await db.users.find_one({"phone": phone}, {"_id": 0})
+    if existing:
+        await db.users.update_one({"phone": phone}, {"$set": {"name": name, "lastLoginAt": iso(), "lastActiveAt": iso(), **extra},
+                                                     "$inc": {"loginCount": 1}})
+        return {**existing, "name": name, **extra}
+    user = {"id": str(uuid.uuid4()), "phone": phone, "name": name, "role": "user", "createdAt": iso(),
+            "lastLoginAt": iso(), "lastActiveAt": iso(), "loginCount": 1, **extra}
+    await db.users.insert_one(dict(user))
+    return user
 
 
 def build_routers(get_db):
@@ -185,15 +260,15 @@ def build_routers(get_db):
             await db.otp_failures.insert_one({"phone": phone, "at": iso()})
             raise HTTPException(400, "That code is incorrect or has expired.")
         await db.otp_failures.delete_many({"phone": phone})
-        name = body.name.strip()
-        existing = await db.users.find_one({"phone": phone}, {"_id": 0})
-        if existing:
-            await db.users.update_one({"phone": phone}, {"$set": {"name": name, "lastLoginAt": iso(), "lastActiveAt": iso()}, "$inc": {"loginCount": 1}})
-            user = {**existing, "name": name}
-        else:
-            user = {"id": str(uuid.uuid4()), "phone": phone, "name": name, "role": "user", "createdAt": iso(),
-                    "lastLoginAt": iso(), "lastActiveAt": iso(), "loginCount": 1}
-            await db.users.insert_one(dict(user))
+        user = await upsert_user(db, phone, body.name.strip())
+        return {"token": make_token(user["id"], "user", 24 * 30), "user": user}
+
+    @public.post("/auth/firebase")
+    async def firebase_login(body: FirebaseLoginIn):
+        claims = await verify_firebase_token(body.idToken)
+        jwt_secret()  # fail clearly before touching the database if sessions can't be issued
+        phone = norm_phone(claims["phone_number"])
+        user = await upsert_user(get_db(), phone, body.name.strip(), firebase_uid=claims["sub"])
         return {"token": make_token(user["id"], "user", 24 * 30), "user": user}
 
     @secured.get("/auth/me")

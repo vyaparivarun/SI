@@ -1,5 +1,5 @@
 import "@/App.css";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
 import { Toaster } from "sonner";
 import { Loader2 } from "lucide-react";
 import Layout from "@/components/Layout";
@@ -29,6 +29,15 @@ import Contact from "@/pages/Contact";
 // Opt-in login gate: set REACT_APP_REQUIRE_LOGIN=true (with REQUIRE_LOGIN=true on the backend)
 // once the database and SMS (Twilio) keys are configured on Vercel.
 const REQUIRE_LOGIN = process.env.REACT_APP_REQUIRE_LOGIN === "true";
+
+// /login: open to everyone when the site-wide gate is off; returns to ?next= after login.
+function LoginRoute() {
+  const { user } = useAuth();
+  const next = new URLSearchParams(window.location.search).get("next");
+  const safeNext = next && next.startsWith("/") && !next.startsWith("//") ? next : "/";
+  if (user) return <Navigate to={safeNext} replace />;
+  return <Login showBack={!REQUIRE_LOGIN} />;
+}
 
 function UserApp() {
   const { user } = useAuth();
@@ -72,6 +81,7 @@ function App() {
         <AuthProvider>
           <Routes>
             <Route path="/admin" element={<Admin />} />
+            <Route path="/login" element={<LoginRoute />} />
             <Route path="*" element={<UserApp />} />
           </Routes>
         </AuthProvider>

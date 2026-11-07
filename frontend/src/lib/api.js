@@ -36,6 +36,7 @@ export const errMsg = (e, fallback = "Something went wrong. Please try again.") 
 
 export const sendOtp = (phone, name) => api.post("/auth/otp/send", { phone, name }).then((r) => r.data);
 export const verifyOtp = (phone, name, code) => api.post("/auth/otp/verify", { phone, name, code }).then((r) => r.data);
+export const firebaseLogin = (idToken, name) => api.post("/auth/firebase", { idToken, name }).then((r) => r.data);
 export const getMe = () => api.get("/auth/me").then((r) => r.data);
 export const saveActivity = (kind, title, inputs, summary) => api.post("/activity", { kind, title, inputs, summary }).then((r) => r.data);
 export const uploadBill = (file) => {
