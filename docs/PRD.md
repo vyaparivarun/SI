@@ -48,7 +48,7 @@ Latest user requests (2026-10-22, verbatim): "make sure to scrap and add all ban
 ## Backlog
 - P1: Admin panel to update DISCOM tariffs/FPPAS/policies without code (data currently in versioned JS modules).
 - P1: Verify remaining DISCOMs (BEST, CESC, IPCL, CSPDCL HV-3, NE/UT utilities) and monthly FPPAS/FAC updates.
-- P0: Twilio keys (TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_VERIFY_SERVICE) needed for real SMS; add the same plus JWT_SECRET, ADMIN_EMAIL, ADMIN_PASSWORD, MONGO_URL, DB_NAME in Vercel. Never set OTP_TEST_NUMBERS in production.
+- P0: Phone login uses Firebase Authentication (replaced Twilio, Nov 2026). Set REACT_APP_FIREBASE_* (frontend) and FIREBASE_PROJECT_ID, JWT_SECRET, MONGO_URL, DB_NAME, ADMIN_EMAIL, ADMIN_PASSWORD (backend) in Vercel.
 - P2: Lease GST input-tax-credit toggle; admin CSV export; tighten CORS to the site domain.
 - P1: Vercel: the user must push to GitHub so Vercel redeploys, and add MONGO_URL/DB_NAME in Vercel for leads and EPC (the solar data works without them).
 - P2: Lender directory: verify solar products for the 9 "ask branch" private banks and RRBs; add more SFBs/co-op banks/SFCs as products are published.

@@ -1,4 +1,4 @@
-"""Phone-OTP login (Firebase Phone Auth, or Twilio Verify as a fallback), admin login, per-user activity + bill storage, admin panel APIs."""
+"""Phone-OTP login (Firebase Phone Auth), admin login, per-user activity + bill storage, admin panel APIs."""
 import os
 import re
 import uuid
@@ -50,38 +50,6 @@ def norm_phone(raw: str) -> str:
     if not PHONE_RE.match(digits):
         raise HTTPException(422, "Enter a valid 10-digit Indian mobile number.")
     return digits
-
-
-def test_numbers() -> Dict[str, str]:
-    out = {}
-    for pair in (os.environ.get("OTP_TEST_NUMBERS") or "").split(","):
-        if ":" in pair:
-            p, c = pair.split(":", 1)
-            out[p.strip()] = c.strip()
-    return out
-
-
-def twilio_conf():
-    sid, tok, svc = (os.environ.get(k) for k in ("TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_VERIFY_SERVICE"))
-    if not (sid and tok and svc):
-        raise HTTPException(503, "SMS login isn't switched on yet. Please try again later.")
-    return sid, tok, svc
-
-
-async def twilio_post(path: str, data: dict) -> dict:
-    sid, tok, svc = twilio_conf()
-    try:
-        async with httpx.AsyncClient(timeout=15) as c:
-            r = await c.post(f"https://verify.twilio.com/v2/Services/{svc}/{path}", data=data, auth=(sid, tok))
-    except httpx.HTTPError:
-        raise HTTPException(503, "Couldn't reach the SMS service. Please try again in a minute.")
-    if r.status_code == 404 and path == "VerificationCheck":
-        return {"status": "expired"}
-    if r.status_code == 429:
-        raise HTTPException(429, "Too many OTP requests for this number. Please wait a few minutes.")
-    if r.status_code >= 400:
-        raise HTTPException(502, "The SMS service rejected this request. Check the number and try again.")
-    return r.json()
 
 
 # ---------------- Firebase phone auth ----------------
@@ -169,15 +137,6 @@ def looks_like(data: bytes, ctype: str) -> bool:
     return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
 
 
-class SendOtpIn(BaseModel):
-    phone: str
-    name: str = Field(min_length=2, max_length=80)
-
-
-class VerifyOtpIn(SendOtpIn):
-    code: str = Field(min_length=4, max_length=8)
-
-
 class FirebaseLoginIn(BaseModel):
     idToken: str = Field(min_length=20, max_length=4096)
     name: str = Field(min_length=2, max_length=80)
@@ -230,39 +189,7 @@ def build_routers(get_db):
             raise HTTPException(401, "Admin login required.")
         return {"email": p["sub"]}
 
-    # ---------------- phone OTP ----------------
-    @public.post("/auth/otp/send")
-    async def send_otp(body: SendOtpIn, request: Request):
-        db = get_db()
-        phone = norm_phone(body.phone)
-        since = iso(now() - timedelta(hours=1))
-        ip = client_ip(request)
-        if await db.otp_requests.count_documents({"phone": phone, "at": {"$gte": since}}) >= 5:
-            raise HTTPException(429, "Too many OTP requests for this number. Please try again in an hour.")
-        if ip and await db.otp_requests.count_documents({"ip": ip, "at": {"$gte": since}}) >= 20:
-            raise HTTPException(429, "Too many OTP requests from this network. Please try again later.")
-        await db.otp_requests.insert_one({"phone": phone, "ip": ip, "at": iso()})
-        if phone not in test_numbers():
-            await twilio_post("Verifications", {"To": f"+91{phone}", "Channel": "sms"})
-        return {"sent": True, "phone": f"+91 {phone[:5]} {phone[5:]}"}
-
-    @public.post("/auth/otp/verify")
-    async def verify_otp(body: VerifyOtpIn):
-        db = get_db()
-        phone = norm_phone(body.phone)
-        since = iso(now() - timedelta(minutes=15))
-        if await db.otp_failures.count_documents({"phone": phone, "at": {"$gte": since}}) >= 5:
-            raise HTTPException(429, "Too many wrong codes. Please wait 15 minutes and request a new OTP.")
-        tests = test_numbers()
-        ok = (tests[phone] == body.code.strip()) if phone in tests else \
-            (await twilio_post("VerificationCheck", {"To": f"+91{phone}", "Code": body.code.strip()})).get("status") == "approved"
-        if not ok:
-            await db.otp_failures.insert_one({"phone": phone, "at": iso()})
-            raise HTTPException(400, "That code is incorrect or has expired.")
-        await db.otp_failures.delete_many({"phone": phone})
-        user = await upsert_user(db, phone, body.name.strip())
-        return {"token": make_token(user["id"], "user", 24 * 30), "user": user}
-
+    # ---------------- phone login (Firebase) ----------------
     @public.post("/auth/firebase")
     async def firebase_login(body: FirebaseLoginIn):
         claims = await verify_firebase_token(body.idToken)

@@ -1,10 +1,10 @@
-"""Auth (phone OTP), activity, bills (GridFS), admin APIs and route security."""
+"""Auth (Firebase phone login), activity, bills (GridFS), admin APIs and route security."""
 import io
 
 import pytest
 import requests
 
-from conftest import API, TEST_PHONE, TEST_PHONE_2, TEST_OTP, login_user, _creds
+from conftest import API, TEST_PHONE, _creds
 
 
 # ---------- route security ----------
@@ -38,28 +38,15 @@ class TestSecurity:
         assert "Aligarh" in (loc.get("district") or "")
 
 
-# ---------- OTP ----------
-class TestOtp:
-    def test_send_invalid_phone(self):
-        r = requests.post(f"{API}/auth/otp/send", json={"phone": "12345", "name": "TEST_X"})
-        assert r.status_code == 422
-        assert "10-digit" in r.json()["detail"]
+# ---------- Firebase phone login ----------
+class TestFirebaseLogin:
+    def test_rejects_garbage_token(self):
+        r = requests.post(f"{API}/auth/firebase", json={"idToken": "x" * 40, "name": "TEST_X"})
+        assert r.status_code in (401, 503), r.text
 
-    def test_send_invalid_name(self):
-        r = requests.post(f"{API}/auth/otp/send", json={"phone": TEST_PHONE, "name": "A"})
-        assert r.status_code == 422
-
-    def test_send_test_number_ok(self):
-        r = requests.post(f"{API}/auth/otp/send", json={"phone": TEST_PHONE, "name": "TEST_User One"})
-        assert r.status_code in (200, 429), r.text
-        if r.status_code == 200:
-            assert r.json()["sent"] is True
-
-    def test_send_real_number_not_configured(self):
-        r = requests.post(f"{API}/auth/otp/send", json={"phone": "9876501234", "name": "TEST_Real"})
-        assert r.status_code in (503, 429), r.text
-        if r.status_code == 503:
-            assert "SMS login isn't switched on yet" in r.json()["detail"]
+    def test_rejects_short_token_and_name(self):
+        assert requests.post(f"{API}/auth/firebase", json={"idToken": "abc", "name": "TEST_X"}).status_code == 422
+        assert requests.post(f"{API}/auth/firebase", json={"idToken": "x" * 40, "name": "A"}).status_code == 422
 
     def test_verify_and_me(self, user_login, user_session):
         u = user_login["user"]
@@ -68,16 +55,6 @@ class TestOtp:
         assert r.status_code == 200
         assert r.json()["phone"] == TEST_PHONE
         assert "_id" not in r.json()
-
-    def test_wrong_code_and_lockout(self):
-        codes = []
-        for _ in range(5):
-            r = requests.post(f"{API}/auth/otp/verify", json={"phone": TEST_PHONE_2, "name": "TEST_User Two", "code": "000000"})
-            codes.append(r.status_code)
-        assert codes == [400] * 5, codes
-        r = requests.post(f"{API}/auth/otp/verify", json={"phone": TEST_PHONE_2, "name": "TEST_User Two", "code": TEST_OTP})
-        assert r.status_code == 429, r.text  # correct code still locked
-        assert "15 minutes" in r.json()["detail"]
 
 
 # ---------- activity & bills ----------

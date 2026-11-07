@@ -27,7 +27,7 @@ import Resources from "@/pages/Resources";
 import Contact from "@/pages/Contact";
 
 // Opt-in login gate: set REACT_APP_REQUIRE_LOGIN=true (with REQUIRE_LOGIN=true on the backend)
-// once the database and SMS (Twilio) keys are configured on Vercel.
+// once the database and Firebase phone login are configured on Vercel.
 const REQUIRE_LOGIN = process.env.REACT_APP_REQUIRE_LOGIN === "true";
 
 // /login: open to everyone when the site-wide gate is off; returns to ?next= after login.
