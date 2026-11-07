@@ -194,6 +194,8 @@ export default function Calculator() {
     const pin = raw.replace(/\D/g, "").slice(0, 6);
     weatherReq.current += 1;
     upd({ pincode: pin, useWeather: false }); setWeather(null); setWeatherError(""); setWeatherLoading(false);
+    // Fields auto-filled from an older pincode must not survive once the pincode changes.
+    setF((s) => (s.autoPin && s.autoPin !== pin ? { ...s, state: "", city: "", discom: "", tariff: "", autoPin: "" } : s));
     if (pin.length === 6) fetchWeather(pin);
   };
 
@@ -201,7 +203,7 @@ export default function Calculator() {
   const changeState = (state) => setF((s) => {
     const autoTariff = getDiscomByName(s.discom)?.ciTariff;
     const tariff = s.discom && String(s.tariff) === String(autoTariff) ? "" : s.tariff;
-    return { ...s, state, discom: "", tariff, autoPin: "" };
+    return { ...s, state, city: "", discom: "", tariff, autoPin: "" };
   });
 
   const model = useMemo(() => {

@@ -16,9 +16,17 @@ API = f"{BASE_URL}/api"
 
 
 @pytest.fixture(scope="module")
-def client():
+def client(user_token):
+    # All /api routes except /api/, /api/auth/otp/*, /api/admin/login need a logged-in user token
     s = requests.Session()
-    s.headers.update({"Content-Type": "application/json"})
+    s.headers.update({"Content-Type": "application/json", "Authorization": f"Bearer {user_token}"})
+    return s
+
+
+@pytest.fixture(scope="module")
+def admin_client(admin_token):
+    s = requests.Session()
+    s.headers.update({"Authorization": f"Bearer {admin_token}"})
     return s
 
 
@@ -54,8 +62,9 @@ class TestLeads:
         data = r.json()
         assert data["intent"] in ("LOW", "MEDIUM")
 
-    def test_list_leads(self, client):
-        r = client.get(f"{API}/leads")
+    def test_list_leads(self, client, admin_client):
+        assert client.get(f"{API}/leads").status_code == 401  # user token is not enough
+        r = admin_client.get(f"{API}/leads")
         assert r.status_code == 200
         data = r.json()
         assert isinstance(data, list)
@@ -115,9 +124,9 @@ class TestEPC:
         assert data["intent"] in ("HIGH", "MEDIUM", "LOW")
         pytest.project_id = data["projectId"]
 
-    def test_project_created_lead(self, client):
+    def test_project_created_lead(self, admin_client):
         # Submitting a project should also create a lead
-        r = client.get(f"{API}/leads")
+        r = admin_client.get(f"{API}/leads")
         assert r.status_code == 200
         assert any(l.get("name") == "TEST_Customer" for l in r.json())
 

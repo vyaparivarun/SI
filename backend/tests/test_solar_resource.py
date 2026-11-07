@@ -22,8 +22,10 @@ SOURCE_IDS = {"gsa", "nasa_clim", "pvgis", "om_era5", "nasa_daily"}
 
 
 @pytest.fixture(scope="module")
-def s():
-    return requests.Session()
+def s(user_token):
+    sess = requests.Session()
+    sess.headers.update({"Authorization": f"Bearer {user_token}"})
+    return sess
 
 
 # ---- Pincode -> correct state/district + full schema ----

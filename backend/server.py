@@ -208,9 +208,9 @@ async def list_leads(_=Depends(current_admin)):
 
 
 @api_router.get("/leads/{lead_id}")
-async def get_lead(lead_id: str):
+async def get_lead(lead_id: str, user=Depends(current_user)):
     doc = await require_db().leads.find_one({"leadId": lead_id}, {"_id": 0})
-    if not doc:
+    if not doc or (user.get("role") != "admin" and doc.get("userId") != user.get("id")):
         raise HTTPException(status_code=404, detail="Lead not found")
     return doc
 

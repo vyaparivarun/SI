@@ -97,6 +97,21 @@ def bearer(request: Request) -> Optional[dict]:
     return p if p.get("type") == "access" else None
 
 
+def client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for", "")
+    return fwd.split(",")[0].strip() if fwd else (request.client.host if request.client else "")
+
+
+def looks_like(data: bytes, ctype: str) -> bool:
+    if ctype == "application/pdf":
+        return data[:5] == b"%PDF-"
+    if ctype == "image/jpeg":
+        return data[:3] == b"\xff\xd8\xff"
+    if ctype == "image/png":
+        return data[:8] == b"\x89PNG\r\n\x1a\n"
+    return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+
+
 class SendOtpIn(BaseModel):
     phone: str
     name: str = Field(min_length=2, max_length=80)
@@ -146,7 +161,7 @@ def build_routers(get_db):
         db = get_db()
         phone = norm_phone(body.phone)
         since = iso(now() - timedelta(hours=1))
-        ip = request.headers.get("x-forwarded-for", request.client.host if request.client else "").split(",")[0].strip()
+        ip = client_ip(request)
         if await db.otp_requests.count_documents({"phone": phone, "at": {"$gte": since}}) >= 5:
             raise HTTPException(429, "Too many OTP requests for this number. Please try again in an hour.")
         if ip and await db.otp_requests.count_documents({"ip": ip, "at": {"$gte": since}}) >= 20:
@@ -208,6 +223,8 @@ def build_routers(get_db):
             raise HTTPException(413, "File is larger than 4 MB. Please upload a smaller photo or PDF.")
         if not data:
             raise HTTPException(422, "The file is empty.")
+        if not looks_like(data, file.content_type):
+            raise HTTPException(422, "This file doesn't look like a real PDF or image. Please upload the bill again.")
         db = get_db()
         name = re.sub(r"[^\w.\- ]", "_", file.filename or "bill")[:120]
         fid = await AsyncIOMotorGridFSBucket(db, bucket_name="bills").upload_from_stream(
@@ -224,7 +241,7 @@ def build_routers(get_db):
     async def admin_login(body: AdminLoginIn, request: Request):
         db = get_db()
         email = body.email.strip().lower()
-        ip = (request.client.host if request.client else "")
+        ip = client_ip(request)
         ident = f"{ip}:{email}"
         if await db.admin_login_attempts.count_documents({"ident": ident, "at": {"$gte": iso(now() - timedelta(minutes=15))}}) >= 5:
             raise HTTPException(429, "Too many failed attempts. Try again in 15 minutes.")

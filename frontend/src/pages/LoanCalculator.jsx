@@ -102,7 +102,7 @@ export default function LoanCalculator() {
               </div>
             ))}
           </Card>
-          <div className="space-y-4">
+          <div className="space-y-4 min-w-0">
             {r ? <Comparison r={r} /> : <Card className="text-sm text-slate-400" data-testid="loan-empty">Enter the amount and tenure to compare options.</Card>}
             {r && <Btn onClick={save} disabled={saving} data-testid="loan-save-btn"><Save className="w-4 h-4" /> Save this comparison</Btn>}
             <Disclaimer>Indicative only. Actual rates, fees, GST treatment and lease structure depend on the lender's credit assessment and documents.</Disclaimer>

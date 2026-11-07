@@ -1,0 +1,48 @@
+{
+  "summary": "I tested login, the pincode fix, the calculator, the loan calculator, bill upload and the admin panel end to end on the backend and in the UI. Backend: 85 of 85 pytest tests pass. The old tests now log in with test number 9999900001 / OTP 246810, and a new file test_auth_admin.py covers auth, activity, bills, admin APIs and route security. Frontend: all the requested flows work at 1920px. The pincode bug is fixed: 110032 shows Delhi (NCT) / East Delhi / BYPL / Rs 8.1; 202001 then switches everything to Uttar Pradesh / Aligarh / DVVNL / Rs 7.1; 380001 offers UGVCL and Torrent; 999999 clears the old fields and shows weather-error; typing a new pin quickly never leaves old fields. One real UI bug: on mobile (390px) the whole loan calculator page scrolls sideways. I also found some smaller issues, listed below.",
+  "backend_issues": {
+    "critical": [],
+    "minor": [
+      {"endpoint": "POST /api/admin/login", "issue": "The lockout key is request.client.host, which is the ingress/proxy IP. So 5 wrong passwords from anyone lock the admin out for everyone for 15 min. The OTP send limit uses x-forwarded-for, so the two are inconsistent."},
+      {"endpoint": "GET /api/leads/{leadId}, GET /api/epc/projects, GET /api/epc/partners", "issue": "Any logged-in user can read every customer's leads and projects. These are not limited to the owner or an admin."},
+      {"endpoint": "CORS", "issue": "allow_origins='*' together with allow_credentials=True. The server echoes back any Origin (checked with https://evil.com). Impact is low because tokens are Bearer headers in localStorage, not cookies, but explicit origins are better."},
+      {"endpoint": "POST /api/bills", "issue": "The file type check trusts the content-type the client sends; the file bytes are never checked."},
+      {"endpoint": "POST /api/auth/otp/verify", "issue": "Each login overwrites the stored user name with whatever was typed. Logout only clears the token in the browser; the 30-day JWT stays valid on the server."}
+    ]
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {"component": "LoanCalculator (mobile 390px)", "issue": "The whole page scrolls sideways (document scrollWidth 686px at a 390px viewport). The comparison table's min-w-[620px] stretches the single grid column instead of scrolling inside its card. As a result the input card is cut off on the right ('GST on i…'), the disclaimer is cut and the Save button sits at the far left edge. Fix: add min-w-0 to the right column (<div className=\"space-y-4 min-w-0\">, line 105) or use grid-cols-[minmax(0,1fr)] on mobile.", "selector": "[data-testid=loan-calculator-page]", "priority": "MEDIUM"},
+      {"component": "Calculator quick-start", "issue": "While the pincode has fewer than 6 digits (for example 202001 edited to 11003), the auto-detected cards still show the previous pin's state, city and DISCOM. Clicking calculate then uses the old location and saves the activity with the partial pincode. Clear the auto-filled fields when the pin no longer matches autoPin.", "selector": "[data-testid=auto-detected]", "priority": "LOW"},
+      {"component": "Calculator > adv-toggle-loc", "issue": "Changing the state by hand (Delhi to Haryana) correctly clears the DISCOM and the auto-filled tariff, but the city stays 'East Delhi'.", "selector": "[data-testid=calc-state]", "priority": "LOW"}
+    ],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "Calculator results", "issues": ["scrollIntoView puts the 'Solar Opportunity Report' title under the sticky header. Add scroll-margin-top."]},
+      {"screen": "Header (desktop 1920)", "issues": ["Sonner toasts at top-center cover the header nav for several seconds.", "'Solar for Business' and 'Project Models' wrap onto two lines."]},
+      {"screen": "Loan calculator", "issues": ["Lease 'Total you pay' and 'Effective annual cost' include GST on rentals (19.64% vs 12.15% reducing). For GST-registered businesses that can claim it back, this makes the lease look much worse. Consider an input-tax-credit toggle."]}
+    ]
+  },
+  "test_report_links": ["/app/backend/tests/test_auth_admin.py", "/app/backend/tests/conftest.py", "/app/backend/tests/backend_test.py", "/app/backend/tests/test_solar_resource.py", "/app/test_reports/pytest/pytest_results.xml"],
+  "action_items": [
+    "Fix the sideways scroll on the mobile loan calculator: add min-w-0 to the right column in LoanCalculator.jsx.",
+    "Update /app/memory/test_credentials.md. It still says there is no auth. Add the admin email/password and the OTP test numbers 9999900001/9999900002 with code 246810.",
+    "On the calculator, clear the auto-filled state, city and DISCOM as soon as the pincode differs from autoPin; clear the city on a manual state change too.",
+    "Base the admin login lockout on x-forwarded-for, not the proxy IP.",
+    "Limit GET /api/leads/{id} and the EPC project and partner lists to the owner or an admin.",
+    "Set explicit CORS_ORIGINS."
+  ],
+  "critical_code_review_comments": [
+    "Calculator.jsx is 1130 lines, over the 700-line limit. Split out SolarDataCard, AdvSection, the results report and the lead form.",
+    "server.py submit_project still uses db.leads directly instead of require_db() (left over from earlier).",
+    "Admin openBill: window.open(blobUrl, '_blank', 'noopener') opens a popup (seen in the test), but the blob URL is never revoked.",
+    "Playbook auth checks: (1) the admin hash starts with $2b$ (OK). (2) Login does not set httpOnly cookies; JWTs are kept in localStorage (a design choice, but exposed to XSS). (3) CORS echoes any origin with credentials (not OK). (4) Brute-force lockout: OTP verify gives 429 after 5 wrong codes (verified); admin login has a 5-attempt / 15-min lock in code, but I only ran one wrong password. (5) The admin is created lazily on first login only if missing and its password is never overwritten (OK, from code review)."
+  ],
+  "updated_files": ["/app/backend/tests/conftest.py (new: user/admin token fixtures)", "/app/backend/tests/test_auth_admin.py (new)", "/app/backend/tests/backend_test.py (client fixture now uses a user token; GET /leads uses the admin token)", "/app/backend/tests/test_solar_resource.py (session uses a user token)"],
+  "success_rate": {"backend": "100% (85/85)", "frontend": "about 93% (1 medium mobile layout bug, 2 low-priority stale-field issues)"},
+  "test_credentials": "/app/memory/test_credentials.md is OUTDATED: it says there is no auth. I used the admin credentials from the review request (friizngtime@gmail.com, password from ADMIN_PASSWORD in backend/.env) and OTP test number 9999900001 / 246810.",
+  "seed_data_creation": "My first admin login created the admins document for friizngtime@gmail.com (lazy seed, $2b$ hash). Cleanup: I deleted my 8 activities and 3 GridFS bills (files and chunks), 4 TEST_ leads, 1 TEST_ EPC partner, 1 TEST_ EPC project, 5 otp_failures (this also lifts the 15-min lock on 9999900002), my otp_requests and 1 admin_login_attempt. User 9999900001 (id fd63f0fe…) already existed before my run, so I did not delete it. Its name is now 'TEST_UI User' because each login overwrites the name.",
+  "retest_needed": false,
+  "should_main_agent_self_test": true,
+  "context_for_next_testing_agent": "conftest.py logs in by calling /api/auth/otp/verify directly. Test numbers need no send step, so this avoids the limit of 5 sends per phone per hour. test_wrong_code_and_lockout locks 9999900002 for 15 min; afterwards, delete its otp_failures. To skip the login UI in Playwright, get a token with curl /api/auth/otp/verify and set localStorage 'si_token'. Pincode lookups take 2-10 s; wait until [data-testid=pincode-loading] disappears."
+}
