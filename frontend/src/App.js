@@ -26,12 +26,16 @@ import EpcPartners from "@/pages/EpcPartners";
 import Resources from "@/pages/Resources";
 import Contact from "@/pages/Contact";
 
+// Opt-in login gate: set REACT_APP_REQUIRE_LOGIN=true (with REQUIRE_LOGIN=true on the backend)
+// once the database and SMS (Twilio) keys are configured on Vercel.
+const REQUIRE_LOGIN = process.env.REACT_APP_REQUIRE_LOGIN === "true";
+
 function UserApp() {
   const { user } = useAuth();
-  if (user === null) {
+  if (REQUIRE_LOGIN && user === null) {
     return <div className="min-h-screen flex items-center justify-center bg-[#0B1622]" data-testid="auth-loading"><Loader2 className="w-6 h-6 animate-spin text-amber-400" /></div>;
   }
-  if (!user) return <Login />;
+  if (REQUIRE_LOGIN && !user) return <Login />;
   return (
     <Layout>
       <Routes>
