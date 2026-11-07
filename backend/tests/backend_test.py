@@ -17,7 +17,7 @@ API = f"{BASE_URL}/api"
 
 @pytest.fixture(scope="module")
 def client(user_token):
-    # All /api routes except /api/, /api/auth/otp/*, /api/admin/login need a logged-in user token
+    # Uses a logged-in user token (see conftest.py); needed when REQUIRE_LOGIN=true
     s = requests.Session()
     s.headers.update({"Content-Type": "application/json", "Authorization": f"Bearer {user_token}"})
     return s

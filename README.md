@@ -23,6 +23,12 @@ yarn install
 REACT_APP_BACKEND_URL=http://localhost:8001 yarn start
 ```
 
-## Environment variables (backend)
+## Environment variables
 
-`MONGO_URL`, `DB_NAME`, `JWT_SECRET`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`, `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_VERIFY_SERVICE`. Never set `OTP_TEST_NUMBERS` in production.
+Backend: `MONGO_URL`, `DB_NAME`, `JWT_SECRET`, `FIREBASE_PROJECT_ID`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`. Optional: `REQUIRE_LOGIN=true` to require login for the whole API.
+
+Frontend: `REACT_APP_FIREBASE_API_KEY`, `REACT_APP_FIREBASE_AUTH_DOMAIN`, `REACT_APP_FIREBASE_PROJECT_ID`, `REACT_APP_FIREBASE_APP_ID`. Optional: `REACT_APP_REQUIRE_LOGIN=true` to put the login screen in front of the whole site.
+
+## Login
+
+Phone-OTP login uses Firebase Authentication. Firebase sends and checks the SMS, the backend verifies the Firebase ID token (`POST /api/auth/firebase`) and issues its own session token, and users are stored in MongoDB. Add test phone numbers in the Firebase console to test without sending real SMS.

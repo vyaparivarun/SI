@@ -2,7 +2,7 @@ import React, { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Btn } from "@/components/ui-kit";
 import { Field, TextInput } from "@/components/Form";
-import { sendOtp, verifyOtp, firebaseLogin, errMsg } from "@/lib/api";
+import { firebaseLogin, errMsg } from "@/lib/api";
 import { firebaseEnabled, sendFirebaseOtp, confirmFirebaseOtp, firebaseErrMsg } from "@/lib/firebase";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/auth";
@@ -29,16 +29,14 @@ function OtpStep({ phone, name, confirmation, onResent, onBack }) {
     if (!/^\d{4,8}$/.test(code)) { toast.error("Enter the code from the SMS."); return; }
     setBusy(true);
     try {
-      const r = confirmation
-        ? await firebaseLogin(await confirmFirebaseOtp(confirmation, code), name)
-        : await verifyOtp(phone, name, code);
+      const r = await firebaseLogin(await confirmFirebaseOtp(confirmation, code), name);
       login(r.token, r.user);
       toast.success(`Welcome, ${r.user.name}!`);
     } catch (err) { toast.error(loginErr(err)); } finally { setBusy(false); }
   };
   const resend = async () => {
     try {
-      if (confirmation) onResent(await sendFirebaseOtp(phone, RECAPTCHA_ID)); else await sendOtp(phone, name);
+      onResent(await sendFirebaseOtp(phone, RECAPTCHA_ID));
       setWait(30); toast.success("New code sent.");
     } catch (err) { toast.error(loginErr(err)); }
   };
@@ -69,7 +67,8 @@ function PhoneStep({ onSent }) {
     if (!/^[6-9]\d{9}$/.test(phone)) { toast.error("Enter a valid 10-digit mobile number."); return; }
     setBusy(true);
     try {
-      const confirmation = firebaseEnabled ? await sendFirebaseOtp(phone, RECAPTCHA_ID) : (await sendOtp(phone, name.trim()), null);
+      if (!firebaseEnabled) { toast.error("Phone login isn't switched on yet. Please try again later."); return; }
+      const confirmation = await sendFirebaseOtp(phone, RECAPTCHA_ID);
       onSent(phone, name.trim(), confirmation); toast.success("OTP sent by SMS.");
     }
     catch (err) { toast.error(loginErr(err)); } finally { setBusy(false); }
